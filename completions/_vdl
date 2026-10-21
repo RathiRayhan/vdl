@@ -1,0 +1,24 @@
+#compdef vdl
+# zsh completion for vdl
+# Install as ~/.local/share/zsh/site-functions/_vdl and add that directory
+# to $fpath before compinit.
+
+_vdl() {
+    _arguments -s \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '(-V --version)'{-V,--version}'[show version]' \
+        '(-b --browser)'{-b,--browser}'[browser to read cookies from]:browser:(vivaldi firefox brave chromium chrome edge opera safari whale none)' \
+        '(-n --no-cookies)'{-n,--no-cookies}'[do not read browser cookies]' \
+        '(-q --quality)'{-q,--quality}'[maximum video height]:height:(360 480 720 1080 1440 2160 2k 4k)' \
+        '(-a --audio)'{-a,--audio}'[audio only, MP3 320k]' \
+        '*'-i'[read URLs from a file]:file:_files' \
+        '*--batch-file=[read URLs from a file]:file:_files' \
+        '--no-aria[do not use aria2c]' \
+        '--no-impersonate[disable browser impersonation]' \
+        '--referer=[send this Referer header]:url:' \
+        '--user-agent=[send this User-Agent header]:user agent:' \
+        '--proxy=[route downloads through this proxy]:proxy:' \
+        '*:url or .txt file:_files -g "*.txt"'
+}
+
+_vdl "$@"
