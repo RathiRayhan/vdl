@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+# Smoke tests for vdl. Uses stub yt-dlp / aria2c / ffmpeg / wl-paste binaries,
+# so it needs nothing but bash and coreutils.
+#
+# Run: bash test/smoke.sh
+
+set -uo pipefail
+
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+home=$tmp/home
+fakebin=$tmp/fakebin
+log=$tmp/calls.log
+out=$tmp/out
+err=$tmp/err
+mkdir -p "$home" "$fakebin"
+
+export HOME=$home
+export VDL_SAVE_DIR=$tmp/dl
+export FAKE_LOG=$log
+export NO_COLOR=1
+unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
+
+for cmd in yt-dlp aria2c ffmpeg wl-paste; do
+    cat > "$fakebin/$cmd" <<'STUB'
+#!/usr/bin/env bash
+# Answer yt-dlp's capability probe without logging it as a download.
+if [[ ${0##*/} == yt-dlp && " $* " == *" --list-impersonate-targets "* ]]; then
+    printf '[info] Available impersonate targets\n'
+    printf 'Client    OS   Source\n'
+    printf -- '----------------------------\n'
+    if [[ ${FAKE_IMPERSONATE:-} == yes ]]; then
+        printf 'Chrome      -    curl_cffi\n'
+    else
+        printf 'Chrome      -    curl_cffi (unavailable)\n'
+    fi
+    exit 0
+fi
+printf 'CALL %s\n' "${0##*/}" >> "$FAKE_LOG"
+for a in "$@"; do
+    printf 'ARG %s\n' "$a" >> "$FAKE_LOG"
+done
+if [[ ${0##*/} == wl-paste ]]; then
+    printf 'https://example.com/from-clipboard\n'
+fi
+exit 0
+STUB
+    chmod +x "$fakebin/$cmd"
+done
+
+pass=0
+fail=0
+
+ok() {
+    pass=$((pass + 1))
+}
+
+bad() {
+    fail=$((fail + 1))
+    printf 'FAIL: %s\n' "$*" >&2
+    [[ -f $log ]] && sed 's/^/    /' "$log" >&2
+    [[ -f $err ]] && sed 's/^/    /' "$err" >&2
+}
+
+run() {
+    : > "$log"
+    : > "$out"
+    : > "$err"
+    PATH="$fakebin:/usr/bin:/bin" bash "$root/bin/vdl" "$@" >"$out" 2>"$err"
+}
+
+arg_is() { grep -qxF "ARG $1" "$log"; }
+arg_has() { grep -qF -- "$1" "$log"; }
+called() { grep -qxF "CALL $1" "$log"; }
+
+# --- help and version -------------------------------------------------------
+run --help
+[[ $? -eq 0 ]] && grep -q 'Usage:' "$out" && ok || bad "vdl --help"
+run --version
+[[ $? -eq 0 ]] && grep -q '^vdl ' "$out" && ok || bad "vdl --version"
+
+# --- media routing and quality cap -----------------------------------------
+run --no-impersonate -n -q 720 'https://example.com/watch?v=abc'
+if [[ $? -eq 0 ]] && called yt-dlp && arg_has 'height<=720' && ! called aria2c \
+    && arg_is '--output-na-placeholder' && arg_is '.'; then
+    ok
+else
+    bad "media URL should use yt-dlp with height<=720"
+fi
+if ! arg_has '--cookies-from-browser'; then ok; else bad "-n should disable cookies"; fi
+if ! arg_has '--impersonate'; then ok; else bad "--no-impersonate should be honoured"; fi
+
+# --- impersonation must follow yt-dlp's capability list ---------------------
+run -n 'https://example.com/watch?v=abc'
+if [[ $? -eq 0 ]] && ! arg_has '--impersonate'; then
+    ok
+else
+    bad "--impersonate must not be used when yt-dlp reports no available target"
+fi
+
+export VDL_IMPERSONATE=chrome
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset VDL_IMPERSONATE
+if [[ $rc -eq 0 ]] && ! arg_has '--impersonate' \
+    && grep -q "yt-dlp cannot impersonate 'chrome'" "$err"; then
+    ok
+else
+    bad "explicit --impersonate target should be skipped with a warning"
+fi
+
+export FAKE_IMPERSONATE=yes
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_IMPERSONATE
+if [[ $rc -eq 0 ]] && arg_is '--impersonate' && arg_is chrome; then
+    ok
+else
+    bad "impersonation should be enabled when yt-dlp reports chrome available"
+fi
+
+# --- quality aliases -------------------------------------------------------
+run -n -q 4k 'https://example.com/watch?v=abc'
+if arg_has 'height<=2160'; then ok; else bad "4k should map to 2160"; fi
+run -n -q 720p 'https://example.com/watch?v=abc'
+if arg_has 'height<=720'; then ok; else bad "720p should map to 720"; fi
+
+# --- direct file via aria2c ------------------------------------------------
+run -n 'https://example.com/file.iso'
+if [[ $? -eq 0 ]] && called aria2c && arg_is -x && arg_is 16; then
+    ok
+else
+    bad "direct .iso should use aria2c"
+fi
+
+# --- direct file via yt-dlp when aria is disabled --------------------------
+run -n --no-aria 'https://example.com/file.iso'
+if [[ $? -eq 0 ]] && called yt-dlp && ! called aria2c \
+    && arg_is file.iso; then
+    ok
+else
+    bad "--no-aria should send direct files to yt-dlp with their real name"
+fi
+
+# --- header propagation ----------------------------------------------------
+run -n --referer=https://ref.example --user-agent=UA --proxy=http://127.0.0.1:9 \
+    'https://example.com/file.iso'
+if arg_is '--referer=https://ref.example' && arg_is '--user-agent=UA' \
+    && arg_is '--all-proxy=http://127.0.0.1:9'; then
+    ok
+else
+    bad "headers/proxy should be forwarded to aria2c"
+fi
+
+# --- audio mode ------------------------------------------------------------
+run -n -a 'https://example.com/watch?v=abc'
+if [[ $? -eq 0 ]] && arg_has '--audio-format' && arg_is mp3 \
+    && arg_has "$VDL_SAVE_DIR/audio"; then
+    ok
+else
+    bad "audio mode should extract MP3 into <save>/audio"
+fi
+
+# --- batch file ------------------------------------------------------------
+printf 'https://a.example/1\r\n\r\n# comment\r\nhttps://a.example/2\r\nhttps://a.example/1\r\n' \
+    > "$home/links.txt"
+run -n "$home/links.txt"
+rc=$?
+n1=$(grep -cxF 'ARG https://a.example/1' "$log")
+n2=$(grep -cxF 'ARG https://a.example/2' "$log")
+if [[ $rc -eq 0 && $n1 -eq 1 && $n2 -eq 1 ]] && ! grep -q $'\r' "$log"; then
+    ok
+else
+    bad "batch file should deduplicate and strip CR (got $n1/$n2)"
+fi
+
+# --- unknown flag with a .txt value is not a batch file --------------------
+: > "$home/archive.txt"
+run -n --download-archive "$home/archive.txt" 'https://example.com/watch?v=x'
+if arg_is '--download-archive' && arg_is "$home/archive.txt" \
+    && ! grep -q 'Batch' "$out"; then
+    ok
+else
+    bad "--download-archive value must pass through, not be read as a batch file"
+fi
+
+# --- clipboard fallback ----------------------------------------------------
+export WAYLAND_DISPLAY=wayland-0
+run -n
+rc=$?
+unset WAYLAND_DISPLAY
+if [[ $rc -eq 0 ]] && arg_is 'https://example.com/from-clipboard'; then
+    ok
+else
+    bad "should read a URL from the clipboard"
+fi
+
+# --- validation ------------------------------------------------------------
+run -q nope 'https://example.com/watch?v=x'
+[[ $? -eq 2 ]] && ok || bad "invalid quality should exit 2"
+run -b netscape 'https://example.com/watch?v=x'
+[[ $? -eq 2 ]] && ok || bad "unknown browser should exit 2"
+
+# --- installer -------------------------------------------------------------
+prefix=$tmp/prefix
+if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
+    --prefix "$prefix" --shells bash,fish >/dev/null 2>&1 \
+    && [[ -x $prefix/bin/vdl ]] \
+    && [[ -f $home/.local/share/bash-completion/completions/vdl ]] \
+    && [[ -f $home/.config/fish/completions/vdl.fish ]]; then
+    ok
+else
+    bad "installer should place the command and completions"
+fi
+
+if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
+    --uninstall --prefix "$prefix" >/dev/null 2>&1 \
+    && [[ ! -e $prefix/bin/vdl ]] \
+    && [[ ! -e $home/.local/share/bash-completion/completions/vdl ]] \
+    && [[ ! -e $home/.config/fish/completions/vdl.fish ]]; then
+    ok
+else
+    bad "uninstaller should remove installed files"
+fi
+
+printf '\n%d passed, %d failed\n' "$pass" "$fail"
+(( fail == 0 ))
