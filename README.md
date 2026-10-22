@@ -1,5 +1,8 @@
 # vdl
 
+[![CI](https://github.com/rathi/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/rathi/vdl/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A portable smart downloader for Linux: direct files go through **aria2c** when
 available, pages/playlists/streams go through **yt-dlp**, and either engine can
 be used alone. It is a single Bash script with no runtime dependencies beyond
@@ -45,16 +48,24 @@ vdl --no-aria -F "https://example.com/video"
 
 vdl -b firefox:work "https://example.com"
 vdl --proxy http://127.0.0.1:8080 "https://example.com"
+vdl --dry-run "https://example.com/file.iso"          # preview routing
+vdl --download-dir ~/tmp "https://example.com/file.zip"
+vdl --quiet "https://example.com/video"               # no banner
+vdl --max-speed 2M "https://example.com/file.iso"     # throttle overall
+vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
+vdl 'magnet:?xt=urn:btih:abc123'                      # torrent magnet
 ```
 
-Run `vdl --help` for the full option list. Unknown options are forwarded to
-yt-dlp, so `-F`, `--playlist-start`, `--download-archive`, and friends work.
+Run `vdl --help` for the full option list or `man vdl` for the man page.
+Unknown options are forwarded to yt-dlp, so `-F`, `--playlist-start`,
+`--download-archive`, and friends work.
 
 Routing:
 
 | URL looks like | Engine |
 |----------------|--------|
 | archive/package/document (`zip`, `iso`, `pdf`, `deb`, ...) | aria2c, 16 connections |
+| magnet links, `.torrent` files | aria2c, 16 connections |
 | plain video file (`mp4`, `mkv`, `webm`, ...) | aria2c (yt-dlp in `-a` mode) |
 | HLS/DASH (`m3u8`, `mpd`) | yt-dlp native, 8 fragments |
 | pages, playlists, everything else | yt-dlp + aria2c (10 connections) |
@@ -77,10 +88,27 @@ Naming:
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
 | `VDL_IMPERSONATE` | `auto` | `auto` (first target yt-dlp reports as available), `off`, or a target |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp options, loaded if present |
+| `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
 | `NO_COLOR` | unset | disable colored output |
 
 `VDL_CONFIG` is an ordinary yt-dlp config file; it is loaded *in addition* to
 the defaults baked into `vdl`. Command-line flags still win over both.
+
+`VDL_CONFIG_DIR` points to vdl's own configuration directory, which may contain
+a `config` file — a simple `KEY=VALUE` file (comments with `#` are supported)
+that sets defaults mirroring the `VDL_*` variables. It is read before
+environment variables, so exported `VDL_*` vars still take precedence.
+
+### vdl config file
+
+```sh
+# ~/.config/vdl/config
+QUALITY=720
+BROWSER=firefox
+SAVE_DIR=~/Downloads/vdl
+IMPERSONATE=chrome
+TMP_KEEP_DAYS=7
+```
 
 Impersonation is probed with `yt-dlp --list-impersonate-targets`, so only
 targets that yt-dlp actually supports on this machine are used. It only
@@ -178,7 +206,17 @@ not slowed down.
 - Single items stay flat and playlist/album entries get their own folder. The
   old literal `NA/` directory is gone, and `-a` uses the same layout under
   `<save_dir>/audio`.
-- `--version`, `NO_COLOR`, XDG paths, and zsh/bash completions were added.
+- `--version`, `NO_COLOR`, XDG paths, zsh/bash completions, and a man page
+  were added.
+- `--dry-run` previews the resolved plan (engine, mode, URLs) without
+  downloading.
+- `--download-dir`, `--quiet`, `--max-speed`, `--limit-speed`, and
+  `--aria-opts` provide per-invocation overrides.
+- Magnet links and `.torrent` files are recognised as direct downloads.
+- A `~/.config/vdl/config` file provides KEY=VALUE defaults that mirror the
+  `VDL_*` environment variables.
+- When `aria2c` fails for a direct download, vdl automatically retries via
+  yt-dlp.
 
 ## Layout
 
@@ -186,6 +224,9 @@ not slowed down.
 bin/vdl               the command
 install.sh            installer / uninstaller
 completions/          bash, zsh and fish completions
+man/vdl.1             man page
+test/smoke.sh         stub-based test suite (no network required)
+Makefile              convenience targets (test, lint, install)
 ```
 
 ## Uninstall
@@ -216,7 +257,8 @@ added it.
 ## Tests
 
 ```sh
-bash test/smoke.sh
+make test               # or: bash test/smoke.sh
+make lint               # shellcheck all scripts
 ```
 
 The suite stubs `yt-dlp`, `aria2c`, `ffmpeg`, and `wl-paste`, so it runs

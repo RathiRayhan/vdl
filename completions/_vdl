@@ -9,12 +9,18 @@ _vdl() {
         '(-V --version)'{-V,--version}'[show version]' \
         '(-b --browser)'{-b,--browser}'[browser to read cookies from]:browser:(vivaldi firefox brave chromium chrome edge opera safari whale none)' \
         '(-n --no-cookies)'{-n,--no-cookies}'[do not read browser cookies]' \
-        '(-q --quality)'{-q,--quality}'[maximum video height]:height:(360 480 720 1080 1440 2160 2k 4k)' \
+        '(-q --quality)'{-q,--quality}'[maximum video height]:height:(360 480 720 1080 1440 2160 4320 2k 4k 8k)' \
         '(-a --audio)'{-a,--audio}'[audio only, MP3 320k]' \
         '*'-i'[read URLs from a file]:file:_files' \
         '*--batch-file=[read URLs from a file]:file:_files' \
         '--no-aria[do not use aria2c]' \
-        '--no-impersonate[disable browser impersonation]' \
+        '--no-impersonate[disable browser TLS impersonation]' \
+        '--download-dir=[override save directory]:dir:_files -d' \
+        '--dry-run[show what would be done]' \
+        '--quiet[suppress banner and progress]' \
+        '--aria-opts=[extra options for aria2c]:aria2c options' \
+        '--max-speed=[overall download speed limit]:rate:' \
+        '--limit-speed=[per-connection speed limit]:rate:' \
         '--referer=[send this Referer header]:url:' \
         '--user-agent=[send this User-Agent header]:user agent:' \
         '--proxy=[route downloads through this proxy]:proxy:' \

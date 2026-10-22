@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # Smoke tests for vdl. Uses stub yt-dlp / aria2c / ffmpeg / wl-paste binaries,
 # so it needs nothing but bash and coreutils.
 #
@@ -204,16 +205,93 @@ run -q nope 'https://example.com/watch?v=x'
 run -b netscape 'https://example.com/watch?v=x'
 [[ $? -eq 2 ]] && ok || bad "unknown browser should exit 2"
 
-# --- installer -------------------------------------------------------------
+# --- dry-run ---------------------------------------------------------------
+run -n --dry-run 'https://example.com/file.iso' 'https://example.com/watch?v=x'
+if [[ $? -eq 0 ]] && grep -q 'dry-run' "$out" \
+   && ! called aria2c && ! called yt-dlp; then
+    ok
+else
+    bad "--dry-run should print a plan and not invoke downloaders"
+fi
+
+# --- quiet mode ------------------------------------------------------------
+run -n --quiet --dry-run 'https://example.com/watch?v=x'
+if ! grep -q '== vdl' "$out" && grep -q 'dry-run' "$out"; then
+    ok
+else
+    bad "--quiet should suppress the banner but keep dry-run details"
+fi
+
+# --- magnet link routing ---------------------------------------------------
+run -n 'magnet:?xt=urn:btih:abc'
+if [[ $? -eq 0 ]] && called aria2c && ! called yt-dlp; then
+    ok
+else
+    bad "magnet: links should route to aria2c"
+fi
+
+# --- .torrent routing ------------------------------------------------------
+run -n 'https://example.com/file.torrent'
+if [[ $? -eq 0 ]] && called aria2c && ! called yt-dlp; then
+    ok
+else
+    bad ".torrent URLs should route to aria2c"
+fi
+
+# --- download-dir override -------------------------------------------------
+ddir=$tmp/customdir
+run -n --download-dir "$ddir" 'https://example.com/file.iso'
+if [[ $? -eq 0 ]] && arg_has "-d" && arg_has "$ddir"; then
+    ok
+else
+    bad "--download-dir should be forwarded to aria2c as -d"
+fi
+
+# --- max-speed forwarding to aria2c ----------------------------------------
+run -n --max-speed 1M 'https://example.com/file.iso'
+if arg_has 'max-download-limit' && arg_has 'max-download-limit=1M'; then
+    ok
+else
+    bad "--max-speed should be forwarded to aria2c"
+fi
+
+# --- aria-opts forwarding --------------------------------------------------
+run -n --aria-opts '--check-interval=30 --max-connection-per-server=4' \
+    'https://example.com/file.iso'
+if arg_is '--check-interval=30' && arg_is '--max-connection-per-server=4'; then
+    ok
+else
+    bad "--aria-opts should be forwarded to aria2c verbatim"
+fi
+
+# --- config file -----------------------------------------------------------
+confdir=$tmp/cfgtest/.config/vdl
+mkdir -p "$confdir"
+printf 'QUALITY=480\n' > "$confdir/config"
+HOME=$tmp/cfgtest XDG_CONFIG_HOME="$tmp/cfgtest/.config" \
+    run -n 'https://example.com/watch?v=abc'
+if arg_has 'height<=480'; then
+    ok
+else
+    bad "config file should set default quality"
+fi
+unset XDG_CONFIG_HOME
+
+# --- 8k quality alias ------------------------------------------------------
+run -n -q 8k 'https://example.com/watch?v=abc'
+if arg_has 'height<=4320'; then ok; else bad "8k should map to 4320"; fi
+
+# --- installer (now also installs man page) ----------------------------------
 prefix=$tmp/prefix
 if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
     --prefix "$prefix" --shells bash,fish >/dev/null 2>&1 \
     && [[ -x $prefix/bin/vdl ]] \
+    && [[ -f "$prefix/share/man/man1/vdl.1" ]] \
     && [[ -f $home/.local/share/bash-completion/completions/vdl ]] \
     && [[ -f $home/.config/fish/completions/vdl.fish ]]; then
     ok
 else
-    bad "installer should place the command and completions"
+    bad "installer should place the command, completions and man page"
 fi
 
 if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
