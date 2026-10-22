@@ -167,10 +167,12 @@ imp_target_available() {
 # Normalize a speed string like "1M", "500K", "1.5M" into aria2c's format.
 # Returns the string lowercased with a trailing unit; validates the numeric part.
 normalize_speed() {
-    local s=${1,,}
+    local s="$1"
     s=${s// /}
-    # Accept digits optionally followed by K, M, G (case-insensitive, already lowercased).
-    [[ $s =~ ^[0-9]+([.][0-9]+)?(k|m|g)?$ ]] || return 1
+    # Accept digits optionally followed by K, M, G (case-insensitive).
+    # Preserve original case for the unit since aria2c accepts both.
+    local lower=${s,,}
+    [[ $lower =~ ^[0-9]+([.][0-9]+)?(k|m|g)?$ ]] || return 1
     printf '%s\n' "$s"
 }
 
@@ -728,11 +730,21 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
     [[ -n $referer ]] && aria_args+=( "--referer=$referer" )
     [[ -n $proxy ]] && aria_args+=( "--all-proxy=$proxy" )
     (( quiet )) && aria_args+=( --quiet=true )
-    [[ -n $max_speed ]] && aria_args+=( "--max-download-limit=$max_speed" )
-    [[ -n $limit_speed ]] && aria_args+=( "--max-download-limit=$limit_speed" )
+    if [[ -n $max_speed ]] && max_speed=$(normalize_speed "$max_speed"); then
+        aria_args+=( "--max-download-limit=$max_speed" )
+    elif [[ -n $max_speed ]]; then
+        err "Invalid speed: $max_speed (try 1M, 500K, 1.5M)"
+        exit 2
+    fi
+    if [[ -n $limit_speed ]] && limit_speed=$(normalize_speed "$limit_speed"); then
+        aria_args+=( "--max-download-limit=$limit_speed" )
+    elif [[ -n $limit_speed ]]; then
+        err "Invalid speed: $limit_speed (try 1M, 500K, 1.5M)"
+        exit 2
+    fi
     # Parse --aria-opts as space-separated; use word splitting intentionally.
     if [[ -n $aria_opts ]]; then
-        # shellcheck disable=SC2086  # explicit word splitting of user-provided opts
+        # shellcheck disable=SC2206,SC2086  # deliberate word splitting of user-provided opts
         aria_args+=($aria_opts)
     fi
 

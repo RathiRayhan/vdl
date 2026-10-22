@@ -78,14 +78,12 @@ arg_has() { grep -qF -- "$1" "$log"; }
 called() { grep -qxF "CALL $1" "$log"; }
 
 # --- help and version -------------------------------------------------------
-run --help
-[[ $? -eq 0 ]] && grep -q 'Usage:' "$out" && ok || bad "vdl --help"
-run --version
-[[ $? -eq 0 ]] && grep -q '^vdl ' "$out" && ok || bad "vdl --version"
+if run --help && grep -q 'Usage:' "$out"; then ok; else bad "vdl --help"; fi
+if run --version && grep -q '^vdl ' "$out"; then ok; else bad "vdl --version"; fi
 
 # --- media routing and quality cap -----------------------------------------
-run --no-impersonate -n -q 720 'https://example.com/watch?v=abc'
-if [[ $? -eq 0 ]] && called yt-dlp && arg_has 'height<=720' && ! called aria2c \
+if run --no-impersonate -n -q 720 'https://example.com/watch?v=abc' \
+    && called yt-dlp && arg_has 'height<=720' && ! called aria2c \
     && arg_is '--output-na-placeholder' && arg_is '.'; then
     ok
 else
@@ -95,8 +93,7 @@ if ! arg_has '--cookies-from-browser'; then ok; else bad "-n should disable cook
 if ! arg_has '--impersonate'; then ok; else bad "--no-impersonate should be honoured"; fi
 
 # --- impersonation must follow yt-dlp's capability list ---------------------
-run -n 'https://example.com/watch?v=abc'
-if [[ $? -eq 0 ]] && ! arg_has '--impersonate'; then
+if run -n 'https://example.com/watch?v=abc' && ! arg_has '--impersonate'; then
     ok
 else
     bad "--impersonate must not be used when yt-dlp reports no available target"
@@ -130,16 +127,16 @@ run -n -q 720p 'https://example.com/watch?v=abc'
 if arg_has 'height<=720'; then ok; else bad "720p should map to 720"; fi
 
 # --- direct file via aria2c ------------------------------------------------
-run -n 'https://example.com/file.iso'
-if [[ $? -eq 0 ]] && called aria2c && arg_is -x && arg_is 16; then
+if run -n 'https://example.com/file.iso' \
+    && called aria2c && arg_is -x && arg_is 16; then
     ok
 else
     bad "direct .iso should use aria2c"
 fi
 
 # --- direct file via yt-dlp when aria is disabled --------------------------
-run -n --no-aria 'https://example.com/file.iso'
-if [[ $? -eq 0 ]] && called yt-dlp && ! called aria2c \
+if run -n --no-aria 'https://example.com/file.iso' \
+    && called yt-dlp && ! called aria2c \
     && arg_is file.iso; then
     ok
 else
@@ -157,8 +154,8 @@ else
 fi
 
 # --- audio mode ------------------------------------------------------------
-run -n -a 'https://example.com/watch?v=abc'
-if [[ $? -eq 0 ]] && arg_has '--audio-format' && arg_is mp3 \
+if run -n -a 'https://example.com/watch?v=abc' \
+    && arg_has '--audio-format' && arg_is mp3 \
     && arg_has "$VDL_SAVE_DIR/audio"; then
     ok
 else
@@ -201,14 +198,16 @@ fi
 
 # --- validation ------------------------------------------------------------
 run -q nope 'https://example.com/watch?v=x'
-[[ $? -eq 2 ]] && ok || bad "invalid quality should exit 2"
+rc=$?
+if (( rc == 2 )); then ok; else bad "invalid quality should exit 2"; fi
 run -b netscape 'https://example.com/watch?v=x'
-[[ $? -eq 2 ]] && ok || bad "unknown browser should exit 2"
+rc=$?
+if (( rc == 2 )); then ok; else bad "unknown browser should exit 2"; fi
 
 # --- dry-run ---------------------------------------------------------------
-run -n --dry-run 'https://example.com/file.iso' 'https://example.com/watch?v=x'
-if [[ $? -eq 0 ]] && grep -q 'dry-run' "$out" \
-   && ! called aria2c && ! called yt-dlp; then
+if run -n --dry-run 'https://example.com/file.iso' 'https://example.com/watch?v=x' \
+    && grep -q 'dry-run' "$out" \
+    && ! called aria2c && ! called yt-dlp; then
     ok
 else
     bad "--dry-run should print a plan and not invoke downloaders"
@@ -223,16 +222,14 @@ else
 fi
 
 # --- magnet link routing ---------------------------------------------------
-run -n 'magnet:?xt=urn:btih:abc'
-if [[ $? -eq 0 ]] && called aria2c && ! called yt-dlp; then
+if run -n 'magnet:?xt=urn:btih:abc' && called aria2c && ! called yt-dlp; then
     ok
 else
     bad "magnet: links should route to aria2c"
 fi
 
 # --- .torrent routing ------------------------------------------------------
-run -n 'https://example.com/file.torrent'
-if [[ $? -eq 0 ]] && called aria2c && ! called yt-dlp; then
+if run -n 'https://example.com/file.torrent' && called aria2c && ! called yt-dlp; then
     ok
 else
     bad ".torrent URLs should route to aria2c"
@@ -240,8 +237,8 @@ fi
 
 # --- download-dir override -------------------------------------------------
 ddir=$tmp/customdir
-run -n --download-dir "$ddir" 'https://example.com/file.iso'
-if [[ $? -eq 0 ]] && arg_has "-d" && arg_has "$ddir"; then
+if run -n --download-dir "$ddir" 'https://example.com/file.iso' \
+    && arg_has "-d" && arg_has "$ddir"; then
     ok
 else
     bad "--download-dir should be forwarded to aria2c as -d"

@@ -1,3 +1,4 @@
+# shellcheck shell=zsh
 #compdef vdl
 # zsh completion for vdl
 # Install as ~/.local/share/zsh/site-functions/_vdl and add that directory
