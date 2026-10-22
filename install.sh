@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck shell=bash
 # vdl installer
 #
 # Usage: ./install.sh [options]
@@ -110,9 +111,10 @@ else
 fi
 
 do_remove() {
-    local rc_clean=0
+    local removed=0
     for path in \
         "$prefix/bin/vdl" \
+        "$prefix/share/man/man1/vdl.1" \
         "$fish_dir/$dst_fish" \
         "$bash_dir/$dst_bash" \
         "$zsh_dir/$dst_zsh"
@@ -120,9 +122,10 @@ do_remove() {
         if [[ -e $path ]]; then
             rm -f -- "$path"
             printf 'removed %s\n' "$path"
+            removed=$((removed + 1))
         fi
     done
-    return "$rc_clean"
+    return 0
 }
 
 if (( uninstall )); then
@@ -140,7 +143,24 @@ if ! command -v yt-dlp >/dev/null 2>&1; then
     printf 'warning: yt-dlp is not installed or not in PATH; vdl needs it.\n' >&2
 fi
 
+# Pre-check write permissions to the target prefix so the user gets a
+# clear error instead of a confusing install(1) failure midway through.
+if (( system_install )); then
+    if [[ ! -w $prefix ]] && ! [[ $EUID -eq 0 ]]; then
+        printf 'install.sh: %s is not writable and you are not root.\n' "$prefix" >&2
+        printf '         Run with sudo or use --prefix ~/.local\n' >&2
+        exit 1
+    fi
+fi
+
 install -d -- "$prefix/bin"
+
+if [[ -f $script_dir/man/vdl.1 ]]; then
+    install -d -- "$prefix/share/man/man1"
+    install -m 0644 -- "$script_dir/man/vdl.1" "$prefix/share/man/man1/vdl.1"
+    printf 'installed %s\n' "$prefix/share/man/man1/vdl.1"
+fi
+
 install -m 0755 -- "$script_dir/bin/vdl" "$prefix/bin/vdl"
 printf 'installed %s\n' "$prefix/bin/vdl"
 

@@ -1,0 +1,161 @@
+.TH VDL 1 "2026-10-22" "vdl 2.0.0" "User Commands"
+.SH NAME
+vdl \- portable smart downloader for Linux (yt-dlp + aria2c)
+.SH SYNOPSIS
+.B vdl
+[\fIOPTIONS\fR] [\fIurl\fR | \fIlinks.txt\fR]
+.SH DESCRIPTION
+.B vdl
+is a single Bash script that routes downloads intelligently: direct files
+(archives, ISO images, PDFs, magnet links, \fI.torrent\fR files, plain video
+files) are sent to
+.B aria2c
+when it is installed for parallel segmented downloads, while pages, playlists,
+and streams are handled by
+.B yt-dlp.
+Either engine can be used alone with
+.BR --no-aria .
+.PP
+When no URL is given on the command line,
+.B vdl
+attempts to read a link from the clipboard (wl-paste, xclip, or xsel).
+.PP
+All yt-dlp defaults are baked into
+.B vdl
+itself; it runs yt-dlp with
+.B --ignore-config
+so the user's global
+.IR ~/.config/yt-dlp/config
+is never touched.
+.SH OPTIONS
+.TP
+.BR \-b ", " \-\-browser " " \fINAME\fR
+Browser to take cookies from (default: auto-detect).
+Supported: vivaldi, firefox, brave, chromium, chrome, edge, opera, safari, whale, none.
+A profile may be appended with \fB:\fR, e.g. \fBfirefox:work\fP.
+.TP
+.BR \-n ", " \-\-no-cookies
+Do not read browser cookies.
+.TP
+.BR \-q ", " \-\-quality " " \fIMAXHEIGHT\fR
+Maximum video height (default: 1080; 2k=1440, 4k=2160).
+.TP
+.BR \-a ", " \-\-audio
+Audio only, converted to MP3 320k.
+Output goes to \fIsave_dir\fR/.
+.TP
+.BR \-i ", " \-\-batch-file " " \fIFILE\fR
+Read URLs from FILE (repeatable).
+.TP
+.B \- \-download-dir \fIDIR\fR
+Override
+.IR VDL_SAVE_DIR
+for this invocation.
+.TP
+.BR \-o ",\-\-output" \ \fR\-\  reserved for yt-dlp passthrough\fR
+.TP
+.B \-\-no-aria
+Do not use aria2c; direct files go to yt-dlp as well.
+.TP
+.B \-\-no-impersonate
+Disable browser TLS impersonation.
+.TP
+.B \-\-referer \fIURL\fR
+Send this Referer header.
+.TP
+.B \-\-user-agent \fIAU\fR
+Send this User-Agent header.
+.TP
+.B \-\-proxy \fIURL\fR
+Route downloads through this proxy.
+.TP
+.B \-\-aria-opts \fIOPTS\fR
+Extra options forwarded to aria2c (e.g.
+.I "\-\-max-connection-per-server=8").
+.TP
+.BR \-M ", " \-\-max-speed " " \fICARD\fR
+Maximum overall download speed (aria2c and yt-dlp).
+.TP
+.BR \-S ", " \-\-limit-speed " " \fICARD\fR
+Per-connection speed limit.
+.TP
+.B \-\-dry-run
+Print the resolved plan (engine, mode, URLs, save dir) without downloading.
+.TP
+.B \-\-quiet
+Suppress the banner and yt-dlp progress output.
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.TP
+.BR \-V ", " \-\-version
+Show version and exit.
+.PP
+Any option not recognised by
+.B vdl
+is passed straight through to yt-dlp.  Flags that take a value can always be
+written as \fB\-\-flag=value
+so that the form is never mistaken for a URL or a batch file.
+.SH ENVIRONMENT
+.TP
+.B VDL_SAVE_DIR
+Download directory (default: XDG download dir +
+.IR /vdl ).
+.TP
+.B VDL_BROWSER
+Default browser, overridden by
+.BR \-b .
+.TP
+.B VDL_QUALITY
+Default max height, overridden by
+.BR \-q .
+.TP
+.B VDL_TMP_KEEP_DAYS
+Days to keep interrupted leftovers (default: 7).
+.TP
+.B VDL_IMPERSONATE
+\fBauto\fR (first available target yt-dlp reports), \fBoff\fR, or a target name.
+.TP
+.B VDL_CONFIG
+Extra yt-dlp config file (default
+.IR ~/.config/vdl/yt-dlp.conf ).
+Loaded in addition to the defaults baked into
+.BR vdl .
+.TP
+.B NO_COLOR
+Disable colored output.
+.SH FILES
+.TP
+.I ~/.config/vdl/config
+Optional vdl-specific config file.  A simple
+.B KEY=VALUE
+file; recognised keys mirror the
+.B VDL_*
+environment variables and are overridden by flags and exported environment
+variables.
+.TP
+.I ~/.config/vdl/yt-dlp.conf
+Extra yt-dlp options loaded via
+.BR VDL_CONFIG .
+.SH EXAMPLES
+.PP
+.RS 4
+.nf
+vdl                                    # URL from clipboard
+vdl "https://example.com/video"
+vdl links.txt                            # every URL listed in links.txt
+vdl -q 720 links.txt
+vdl -a "https://example.com/album"        # MP3 320k
+vdl -n "https://example.com/file.iso"     # direct file, no cookies
+vdl --no-aria -F "https://example.com/video"  # list formats
+vdl --dry-run "https://example.com/file.iso"   # preview routing
+vdl --download-dir ~/tmp "https://example.com/file.zip"
+vdl --aria-opts "--max-connection-per-server=8" "https://example.com/file.iso"
+.fi
+.RE
+.SH SEE ALSO
+.BR yt-dlp (1),
+.BR aria2c (1),
+.BR mktemp (1)
+.SH BUGS
+Report bugs at the project's GitHub issue tracker.
