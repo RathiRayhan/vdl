@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2207  # intentional word splitting in COMPREPLY
 # bash completion for vdl
 # Install as ~/.local/share/bash-completion/completions/vdl
 

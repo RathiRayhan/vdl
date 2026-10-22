@@ -198,13 +198,16 @@ fi
 case ":$PATH:" in
     *":$prefix/bin:"*) ;;
     *)
+        # shellcheck disable=SC2016  # single-quoted intentionally; user copies this verbatim
         printf '\nNote: %s/bin is not in your PATH. Add it, e.g.:\n' "$prefix"
+        # shellcheck disable=SC2016  # single-quoted intentionally; user copies this verbatim
         printf '  export PATH="%s/bin:$PATH"\n' "$prefix"
         ;;
 esac
 
 if (( install_completions )) && [[ " $shells " == *" zsh "* ]] && (( ! system_install )); then
     printf '\nNote: for zsh completions, make sure this runs before compinit:\n'
+    # shellcheck disable=SC2016  # single-quoted intentionally; user copies this verbatim
     printf '  fpath=("%s" $fpath)\n' "$zsh_dir"
 fi
 

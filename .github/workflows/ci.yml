@@ -22,7 +22,9 @@ jobs:
       - name: ShellCheck
         run: |
           shellcheck --shell=bash bin/vdl install.sh test/smoke.sh
-          shellcheck completions/vdl completions/vdl.fish completions/_vdl || true
+          shellcheck completions/vdl.bash
+          # zsh and fish completions use syntax that shellcheck's bash mode
+          # cannot parse; they are verified by manual review and smoke tests.
 
       - name: Smoke tests
         run: |
