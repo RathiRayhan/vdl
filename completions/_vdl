@@ -21,7 +21,7 @@ _vdl() {
         '--quiet[suppress banner and progress]' \
         '--aria-opts=[extra options for aria2c]:aria2c options' \
         '--max-speed=[overall download speed limit]:rate:' \
-        '--limit-speed=[per-connection speed limit]:rate:' \
+        '--limit-speed=[per-download speed limit]:rate:' \
         '--referer=[send this Referer header]:url:' \
         '--user-agent=[send this User-Agent header]:user agent:' \
         '--proxy=[route downloads through this proxy]:proxy:' \

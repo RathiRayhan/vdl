@@ -34,5 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` checks for write permission to the target prefix before
   installing and gives a clear error if `--system` is used without `sudo`.
 
+### Fixed
+- Forwarded yt-dlp options now keep their values adjacent.  Options such as
+  `--download-archive` no longer consume the following flag as their argument.
+- `--max-speed` and `--limit-speed` now map to the correct backend options:
+  aria2c's overall and per-download limits, and yt-dlp's `--limit-rate`.
+  Rates are converted to bytes, so values like `1.5M` and `1G` work.
+- When aria2c fails, incomplete direct files are removed before the yt-dlp
+  fallback, and only the downloads that actually failed are retried.  This
+  avoids reporting success for a truncated file left by aria2c.
+
 ### Removed
 - Dead `rc_clean` variable in `install.sh` (it was always `0`).

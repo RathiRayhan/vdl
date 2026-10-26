@@ -44,6 +44,9 @@ printf 'CALL %s\n' "${0##*/}" >> "$FAKE_LOG"
 for a in "$@"; do
     printf 'ARG %s\n' "$a" >> "$FAKE_LOG"
 done
+if [[ ${0##*/} == aria2c && ${FAKE_ARIA_FAIL:-} == yes ]]; then
+    exit 1
+fi
 if [[ ${0##*/} == wl-paste ]]; then
     printf 'https://example.com/from-clipboard\n'
 fi
@@ -185,6 +188,19 @@ else
     bad "--download-archive value must pass through, not be read as a batch file"
 fi
 
+# --- forwarded option values keep their position ---------------------------
+new_archive=$home/new-archive.txt
+run -n --download-archive "$new_archive" 'https://example.com/watch?v=x' \
+    --merge-output-format mkv
+dl_next=$(awk '/^ARG --download-archive$/{getline; val=$0} END{print val}' "$log")
+mof_next=$(awk '/^ARG --merge-output-format$/{getline; val=$0} END{print val}' "$log")
+if [[ $dl_next == "ARG $new_archive" && $mof_next == 'ARG mkv' ]] \
+    && arg_is 'https://example.com/watch?v=x'; then
+    ok
+else
+    bad "forwarded options must stay adjacent to their values (archive=$dl_next, format=$mof_next)"
+fi
+
 # --- clipboard fallback ----------------------------------------------------
 export WAYLAND_DISPLAY=wayland-0
 run -n
@@ -244,12 +260,82 @@ else
     bad "--download-dir should be forwarded to aria2c as -d"
 fi
 
-# --- max-speed forwarding to aria2c ----------------------------------------
+# --- speed limits ----------------------------------------------------------
 run -n --max-speed 1M 'https://example.com/file.iso'
-if arg_has 'max-download-limit' && arg_has 'max-download-limit=1M'; then
+if arg_is '--max-overall-download-limit=1048576' \
+    && ! arg_has 'max-download-limit'; then
     ok
 else
-    bad "--max-speed should be forwarded to aria2c"
+    bad "--max-speed should set aria2c's overall download limit in bytes"
+fi
+
+run -n --limit-speed 500K 'https://example.com/file.iso'
+if arg_is '--max-download-limit=512000' \
+    && ! arg_has 'max-overall-download-limit'; then
+    ok
+else
+    bad "--limit-speed should set aria2c's per-download limit in bytes"
+fi
+
+run -n --max-speed 1.5M --limit-speed 1G 'https://example.com/file.iso'
+if arg_is '--max-overall-download-limit=1572864' \
+    && arg_is '--max-download-limit=1073741824'; then
+    ok
+else
+    bad "decimal and G speed limits should be converted to bytes"
+fi
+
+run -n --no-aria --max-speed 2M 'https://example.com/watch?v=abc'
+if arg_is '--limit-rate' && arg_is '2097152' \
+    && ! arg_has '--throttled-rate'; then
+    ok
+else
+    bad "--max-speed should use yt-dlp --limit-rate"
+fi
+
+run -n --max-speed 2M 'https://example.com/watch?v=abc'
+if arg_is '--limit-rate' && arg_is '2097152' \
+    && arg_has '--max-overall-download-limit=2097152'; then
+    ok
+else
+    bad "media downloads should apply the overall limit to aria2c as well"
+fi
+
+run -n --no-aria --max-speed 2M --limit-speed 500K 'https://example.com/watch?v=abc'
+if arg_is '--limit-rate' && arg_is '512000'; then
+    ok
+else
+    bad "yt-dlp should use the stricter of the two speed limits"
+fi
+
+run -n --no-aria --max-speed nonsense 'https://example.com/watch?v=abc'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'Invalid speed' "$err"; then
+    ok
+else
+    bad "invalid speed should exit 2 even on native-only paths"
+fi
+
+# --- aria fallback removes incomplete partials -----------------------------
+mkdir -p "$VDL_SAVE_DIR"
+printf 'partial' > "$VDL_SAVE_DIR/bad.iso"
+: > "$VDL_SAVE_DIR/bad.iso.aria2"
+printf 'complete' > "$VDL_SAVE_DIR/good.iso"
+export FAKE_ARIA_FAIL=yes
+run -n 'https://example.com/good.iso' 'https://example.com/bad.iso' \
+    'https://example.com/missing.iso'
+rc=$?
+unset FAKE_ARIA_FAIL
+if [[ $rc -eq 0 ]] \
+    && [[ ! -e $VDL_SAVE_DIR/bad.iso ]] \
+    && [[ ! -e $VDL_SAVE_DIR/bad.iso.aria2 ]] \
+    && [[ $(cat "$VDL_SAVE_DIR/good.iso") == complete ]] \
+    && [[ $(grep -cxF 'ARG https://example.com/bad.iso' "$log") -eq 2 ]] \
+    && [[ $(grep -cxF 'ARG https://example.com/good.iso' "$log") -eq 1 ]] \
+    && [[ $(grep -cxF 'ARG https://example.com/missing.iso' "$log") -eq 2 ]]; then
+    ok
+else
+    bad "aria2c fallback should remove partials and retry only failed direct files"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------
