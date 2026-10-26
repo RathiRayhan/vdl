@@ -51,14 +51,15 @@ vdl --proxy http://127.0.0.1:8080 "https://example.com"
 vdl --dry-run "https://example.com/file.iso"          # preview routing
 vdl --download-dir ~/tmp "https://example.com/file.zip"
 vdl --quiet "https://example.com/video"               # no banner
-vdl --max-speed 2M "https://example.com/file.iso"     # throttle overall
+vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
+vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
 vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
 vdl 'magnet:?xt=urn:btih:abc123'                      # torrent magnet
 ```
 
 Run `vdl --help` for the full option list or `man vdl` for the man page.
-Unknown options are forwarded to yt-dlp, so `-F`, `--playlist-start`,
-`--download-archive`, and friends work.
+Unknown options are forwarded to yt-dlp with their values in order, so `-F`,
+`--playlist-start`, `--download-archive`, and friends work.
 
 Routing:
 
@@ -211,12 +212,15 @@ not slowed down.
 - `--dry-run` previews the resolved plan (engine, mode, URLs) without
   downloading.
 - `--download-dir`, `--quiet`, `--max-speed`, `--limit-speed`, and
-  `--aria-opts` provide per-invocation overrides.
+  `--aria-opts` provide per-invocation overrides. Speed limits accept
+  `K`/`M`/`G` suffixes and map to aria2c's overall/per-download limits or
+  yt-dlp's `--limit-rate`.
 - Magnet links and `.torrent` files are recognised as direct downloads.
 - A `~/.config/vdl/config` file provides KEY=VALUE defaults that mirror the
   `VDL_*` environment variables.
-- When `aria2c` fails for a direct download, vdl automatically retries via
-  yt-dlp.
+- When `aria2c` fails, only incomplete direct files are retried via yt-dlp;
+  partial files and their `.aria2` control files are removed first.
+  Magnet/torrent downloads are not retried this way.
 
 ## Layout
 
