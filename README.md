@@ -8,6 +8,55 @@ available, pages/playlists/streams go through **yt-dlp**, and either engine can
 be used alone. It is a single Bash script with no runtime dependencies beyond
 `yt-dlp` (and `bash`), so it behaves the same on any distribution.
 
+## What it does
+
+`vdl` takes one or more URLs and selects the right downloader for each one:
+
+- **Direct files** — archives, packages, disk images, documents, plain video
+  files, magnet links, and `.torrent` files — go to aria2c with multiple
+  connections and resume support. If aria2c is unavailable or `--no-aria` is
+  used, yt-dlp downloads them instead.
+- **Pages, playlists, and streams** — YouTube and other supported sites, HLS,
+  and DASH — go to yt-dlp with optional browser cookies, TLS impersonation,
+  quality limits, and MP4 merging.
+- **Mixed input** is handled in one run: direct files and media URLs are split
+  automatically and downloaded with their respective engines.
+
+URLs can come from arguments, batch files, or the clipboard. The same command
+also handles browser profiles, custom headers, proxies, audio extraction,
+speed limits, and unknown yt-dlp options.
+
+## Features
+
+- **Smart per-URL routing:** direct files use aria2c; pages, playlists, and
+  streams use yt-dlp; mixed URL lists use both.
+- **Fast, resumable direct downloads:** 16 aria2c connections per file with
+  `--continue` and no preallocation.
+- **Media downloads:** yt-dlp uses aria2c for HTTP(S) media, native downloads
+  for HLS/DASH, a configurable height cap, and MP4 output when possible.
+- **Audio extraction:** `-a` downloads the best audio and converts it to MP3
+  320k under `<save_dir>/audio`.
+- **Browser integration:** auto-detects installed browsers, accepts a specific
+  profile such as `firefox:work`, and can disable cookies with `-n`.
+- **TLS impersonation:** uses a yt-dlp-supported browser target when available,
+  with `auto`, `off`, or an explicit target.
+- **Flexible input:** positional URLs, repeatable `--batch-file`, `www.` URL
+  normalization, clipboard pickup, and order-preserving duplicate removal.
+- **Ordered passthrough:** unknown options are forwarded to yt-dlp in their
+  original order with their values attached.
+- **Bandwidth controls:** overall and per-download limits with `K`/`M`/`G`
+  suffixes, mapped correctly to aria2c and yt-dlp.
+- **Safe recovery:** when aria2c fails, incomplete direct files are cleaned up
+  and retried with yt-dlp without re-downloading completed files.
+- **Predictable defaults:** yt-dlp runs with `--ignore-config` plus vdl's own
+  defaults, optionally extended by `~/.config/vdl/yt-dlp.conf`.
+- **Configuration:** environment variables and a small `KEY=VALUE` config file,
+  with CLI flags taking precedence.
+- **Preview and diagnostics:** `--dry-run` shows the resolved plan without
+  downloading anything.
+- **Packaging:** installer/uninstaller, bash/zsh/fish completions, a man page,
+  and a network-free smoke test suite.
+
 ## Requirements
 
 | Tool | Needed for | Package hint |
@@ -54,6 +103,8 @@ vdl --quiet "https://example.com/video"               # no banner
 vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
 vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
 vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
+vdl --download-archive seen.txt -f "bv*+ba" \
+  "https://example.com/video"                         # values stay attached
 vdl 'magnet:?xt=urn:btih:abc123'                      # torrent magnet
 ```
 
@@ -78,6 +129,75 @@ Naming:
 - Playlist and album entries get a folder named after the playlist/album.
 - `-a` writes MP3 files to `<save_dir>/audio` with the same flat/grouped
   layout.
+
+### Speed limits
+
+`--max-speed` and `--limit-speed` accept a byte rate with an optional
+case-insensitive `K`, `M`, or `G` suffix (1024-based). Fractional values are
+allowed when a suffix is present, for example `500K`, `1.5M`, or `1G`. A bare
+number means bytes per second, and `0` means unlimited.
+
+| Flag | aria2c behavior | yt-dlp behavior |
+|------|------------------|-----------------|
+| `--max-speed RATE` | overall limit across the aria2c invocation | `--limit-rate` |
+| `--limit-speed RATE` | limit for each download | `--limit-rate` |
+
+yt-dlp has one rate limit, so when both vdl flags are set it receives the
+stricter non-zero value. Invalid rates are rejected before any download starts.
+
+### aria2c fallback
+
+If aria2c exits with an error during direct downloads, vdl does not re-download
+everything. It checks each HTTP(S) direct file:
+
+- An `.aria2` control file means the download was interrupted. vdl removes the
+  partial file and its control file before retrying, so yt-dlp cannot mistake
+  the partial for a completed file.
+- A missing file is retried.
+- An existing file without a control file is left untouched.
+
+Only the incomplete URLs are passed to yt-dlp, using the same save directory,
+browser cookies, headers, proxy, impersonation, and forwarded options. Magnet
+links and `.torrent` downloads are not retried because yt-dlp cannot fetch
+their payloads. If nothing is retryable, vdl exits with aria2c's status.
+
+## How it works
+
+`vdl` is one Bash script, not a daemon or a wrapper around a config framework.
+Each invocation runs through these phases:
+
+1. **Parse arguments.** vdl's own flags are consumed. Unknown options and their
+   values are kept in their original order for yt-dlp, while URL-shaped tokens
+   and bare `.txt` batch files are extracted. `--` ends vdl option parsing.
+2. **Resolve settings.** Browser, quality, audio mode, proxy, and speed limits
+   are resolved with this precedence: command line, environment, vdl config
+   file, built-in defaults. Speed strings are validated and converted to bytes
+   here, before any downloader runs.
+3. **Collect URLs.** URLs come from the command line, repeatable batch files
+   (only lines starting with `http://` or `https://`), or the clipboard when no
+   URL was supplied. Duplicates are removed while preserving order.
+4. **Classify and plan.** Routing is based on the URL text: magnet links,
+   `.torrent`, known archive/package/document extensions, and plain video files
+   (outside audio mode) are direct downloads; everything else is treated as a
+   page, playlist, or stream. vdl then decides whether aria2c, yt-dlp, or both
+   are needed.
+5. **Build downloader commands.** yt-dlp receives `--ignore-config`, vdl's
+   built-in retry/timeout/output defaults, the optional
+   `~/.config/vdl/yt-dlp.conf`, and the relevant cookies, impersonation,
+   headers, proxy, speed, and passthrough options. For media, yt-dlp is told to
+   use aria2c for HTTP(S) transfers and native downloads for HLS/DASH.
+   `--dry-run` stops after this plan is printed.
+6. **Download.** Direct files go to aria2c when available; otherwise, or for a
+   failed aria2c run, yt-dlp handles the incomplete direct URLs. Media and
+   page URLs are downloaded by yt-dlp.
+7. **Clean up.** Temporary files live under `<save_dir>/.tmp`. On exit, vdl
+   deletes leftovers older than `VDL_TMP_KEEP_DAYS` (default `7`), removes empty
+   directories, and returns the accumulated downloader exit status.
+
+Because direct aria2c downloads are not driven by yt-dlp, they receive the
+user-agent, referer, proxy, and aria2c options, but not browser cookies or
+yt-dlp-only passthrough flags. Use `--no-aria` for cookie-protected direct
+links.
 
 ## Environment
 
@@ -215,6 +335,8 @@ not slowed down.
   `--aria-opts` provide per-invocation overrides. Speed limits accept
   `K`/`M`/`G` suffixes and map to aria2c's overall/per-download limits or
   yt-dlp's `--limit-rate`.
+- Unknown yt-dlp options keep their original order and stay attached to their
+  values, even when URLs are interleaved with them.
 - Magnet links and `.torrent` files are recognised as direct downloads.
 - A `~/.config/vdl/config` file provides KEY=VALUE defaults that mirror the
   `VDL_*` environment variables.
@@ -266,4 +388,6 @@ make lint               # shellcheck all scripts
 ```
 
 The suite stubs `yt-dlp`, `aria2c`, `ffmpeg`, and `wl-paste`, so it runs
-without network access or those tools installed.
+without network access or those tools installed. It covers routing, batch
+files, ordered option forwarding, speed-limit mapping, validation, dry-run,
+config precedence, and aria2c partial-download recovery.
