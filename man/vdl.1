@@ -42,17 +42,15 @@ Maximum video height (default: 1080; 2k=1440, 4k=2160).
 .TP
 .BR \-a ", " \-\-audio
 Audio only, converted to MP3 320k.
-Output goes to \fIsave_dir\fR/.
+Output goes to \fIsave_dir\fR/audio.
 .TP
 .BR \-i ", " \-\-batch-file " " \fIFILE\fR
 Read URLs from FILE (repeatable).
 .TP
-.B \- \-download-dir \fIDIR\fR
+.B \-\-download-dir \fIDIR\fR
 Override
 .IR VDL_SAVE_DIR
 for this invocation.
-.TP
-.BR \-o ",\-\-output" \ \fR\-\  reserved for yt-dlp passthrough\fR
 .TP
 .B \-\-no-aria
 Do not use aria2c; direct files go to yt-dlp as well.
@@ -73,11 +71,11 @@ Route downloads through this proxy.
 Extra options forwarded to aria2c (e.g.
 .I "\-\-max-connection-per-server=8").
 .TP
-.BR \-M ", " \-\-max-speed " " \fICARD\fR
-Maximum overall download speed (aria2c and yt-dlp).
+.B \-\-max-speed \fIRATE\fR
+Maximum overall download speed (aria2c) or rate cap (yt-dlp).
 .TP
-.BR \-S ", " \-\-limit-speed " " \fICARD\fR
-Per-connection speed limit.
+.B \-\-limit-speed \fIRATE\fR
+Per-download speed limit.
 .TP
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.

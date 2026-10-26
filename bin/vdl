@@ -53,7 +53,7 @@ Options:
       --quiet              Suppress banner and progress output
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
-      --limit-speed RATE   Per-connection speed limit
+      --limit-speed RATE   Per-download speed limit
       --referer URL        Send this Referer header
       --user-agent UA      Send this User-Agent header
       --proxy URL          Route downloads through this proxy
@@ -164,16 +164,54 @@ imp_target_available() {
     '
 }
 
-# Normalize a speed string like "1M", "500K", "1.5M" into aria2c's format.
-# Returns the string lowercased with a trailing unit; validates the numeric part.
+# Convert a speed string like "1M", "500K", "1.5M" or "1G" to bytes/second.
+# A plain integer works with both aria2c and yt-dlp and avoids their different
+# handling of units and decimals.
 normalize_speed() {
-    local s="$1"
-    s=${s// /}
-    # Accept digits optionally followed by K, M, G (case-insensitive).
-    # Preserve original case for the unit since aria2c accepts both.
+    local s=${1// /}
     local lower=${s,,}
-    [[ $lower =~ ^[0-9]+([.][0-9]+)?(k|m|g)?$ ]] || return 1
-    printf '%s\n' "$s"
+    local num frac unit scale=1 denom=1 frac_val=0
+    local int_val i
+
+    # Accept digits, an optional fractional part, and an optional K/M/G unit.
+    [[ $lower =~ ^([0-9]+)(\.([0-9]{1,6}))?([kmg])?$ ]] || return 1
+
+    num=${BASH_REMATCH[1]}
+    frac=${BASH_REMATCH[3]}
+    unit=${BASH_REMATCH[4]}
+
+    # A fractional byte count is meaningless; require a unit for decimals.
+    if [[ -z $unit && -n $frac ]]; then
+        return 1
+    fi
+
+    case $unit in
+        k) scale=1024 ;;
+        m) scale=$((1024 * 1024)) ;;
+        g) scale=$((1024 * 1024 * 1024)) ;;
+    esac
+
+    int_val=$((10#$num))
+    if [[ -n $frac ]]; then
+        frac_val=$((10#$frac))
+        for ((i = 0; i < ${#frac}; i++)); do
+            denom=$((denom * 10))
+        done
+    fi
+
+    printf '%s\n' "$((int_val * scale + frac_val * scale / denom))"
+}
+
+# Return the URL basename used for direct-file naming, or fail when the URL
+# has no usable basename (the caller then falls back to a yt-dlp template).
+url_filename() {
+    local name=${1%%\?*}
+    name=${name%%#*}
+    name=${name##*/}
+    case $name in
+        ''|.|..) return 1 ;;
+    esac
+    printf '%s\n' "$name"
 }
 
 # Read the vdl-specific config file ($XDG_CONFIG_HOME/vdl/config or
@@ -229,8 +267,8 @@ max_speed=''
 limit_speed=''
 
 declare -a batch_files=()
-declare -a url_args=()
-declare -a url_prev=()
+declare -a raw_args=()
+declare -a raw_kind=()
 declare -a passthru=()
 prev_unknown_flag=0
 
@@ -390,18 +428,24 @@ while (( $# > 0 )); do
             ;;
         --)
             while (( $# > 0 )); do
-                url_args+=("$1")
-                url_prev+=(0)
+                raw_args+=("$1")
+                raw_kind+=("pos")
                 shift
             done
+            prev_unknown_flag=0
             ;;
         -*)
-            passthru+=("$arg")
+            raw_args+=("$arg")
+            raw_kind+=("pass")
             prev_unknown_flag=1
             ;;
         *)
-            url_args+=("$arg")
-            url_prev+=("$prev_unknown_flag")
+            raw_args+=("$arg")
+            if (( prev_unknown_flag )); then
+                raw_kind+=("pos-after-flag")
+            else
+                raw_kind+=("pos")
+            fi
             prev_unknown_flag=0
             ;;
     esac
@@ -411,6 +455,24 @@ done
 # 2. Resolve browser, quality and mode
 # ---------------------------------------------------------------------------
 read_vdl_config
+
+# Convert speed limits once, before any downloader runs.  Keeping them as
+# plain byte values avoids aria2c's rejection of "1.5M"/"1G" and the different
+# semantics of the two backends' rate options.
+max_speed_bytes=''
+if [[ -n $max_speed ]]; then
+    if ! max_speed_bytes=$(normalize_speed "$max_speed"); then
+        err "Invalid speed: $max_speed (try 1M, 500K, 1.5M)"
+        exit 2
+    fi
+fi
+limit_speed_bytes=''
+if [[ -n $limit_speed ]]; then
+    if ! limit_speed_bytes=$(normalize_speed "$limit_speed"); then
+        err "Invalid speed: $limit_speed (try 1M, 500K, 1.5M)"
+        exit 2
+    fi
+fi
 
 if (( no_cookies )); then
     browser=none
@@ -458,34 +520,35 @@ fi
 # ---------------------------------------------------------------------------
 urls=()
 
-if (( ${#url_args[@]} )); then
-    for i in "${!url_args[@]}"; do
-        arg=${url_args[$i]}
-        case $arg in
-            http://*|https://*)
-                urls+=("$arg")
-                ;;
-            www.*)
-                urls+=("https://$arg")
-                ;;
-            magnet:*)
-                urls+=("$arg")
-                ;;
-            *.txt)
-                # A bare .txt is a batch file unless it is the value of an
-                # unknown flag (e.g. --download-archive archive.txt).
-                if [[ -f $arg && ${url_prev[$i]} -eq 0 ]]; then
-                    batch_files+=("$arg")
-                else
-                    passthru+=("$arg")
-                fi
-                ;;
-            *)
+# raw_args preserves the original argument order.  Non-URL tokens, including
+# values belonging to unknown yt-dlp options, stay in passthru in that order;
+# only URL-shaped tokens and bare batch files are pulled out.
+for i in "${!raw_args[@]}"; do
+    arg=${raw_args[$i]}
+    case $arg in
+        http://*|https://*)
+            urls+=("$arg")
+            ;;
+        www.*)
+            urls+=("https://$arg")
+            ;;
+        magnet:*)
+            urls+=("$arg")
+            ;;
+        *.txt)
+            # A bare .txt is a batch file unless it is the value of an
+            # unknown flag (e.g. --download-archive archive.txt).
+            if [[ ${raw_kind[$i]} == pos && -f $arg ]]; then
+                batch_files+=("$arg")
+            else
                 passthru+=("$arg")
-                ;;
-        esac
-    done
-fi
+            fi
+            ;;
+        *)
+            passthru+=("$arg")
+            ;;
+    esac
+done
 
 if (( ${#batch_files[@]} )); then
     for f in "${batch_files[@]}"; do
@@ -584,9 +647,11 @@ for u in "${urls[@]}"; do
 done
 
 direct_via_ytdlp=0
+declare -a direct_pending=()
 if (( ${#direct[@]} )); then
     if (( ! have_aria || no_aria )); then
         direct_via_ytdlp=1
+        direct_pending=("${direct[@]}")
         if (( have_aria )); then
             note "--no-aria: direct files will be fetched with yt-dlp"
         else
@@ -627,7 +692,19 @@ yt_common+=(
 )
 (( quiet )) && yt_common+=( --quiet )
 (( ! quiet )) && yt_common+=( --progress --console-title )
-[[ -n $max_speed ]] && yt_common+=( --throttled-rate "$max_speed" )
+
+# yt-dlp exposes one per-download rate limit, so when both limits are set use
+# the stricter one.  A zero rate means "unlimited" and is ignored here.
+yt_speed=''
+if [[ -n $max_speed_bytes && $max_speed_bytes != 0 ]]; then
+    yt_speed=$max_speed_bytes
+fi
+if [[ -n $limit_speed_bytes && $limit_speed_bytes != 0 ]]; then
+    if [[ -z $yt_speed || $limit_speed_bytes -lt $yt_speed ]]; then
+        yt_speed=$limit_speed_bytes
+    fi
+fi
+[[ -n $yt_speed ]] && yt_common+=( --limit-rate "$yt_speed" )
 
 impersonate=''
 if (( ! no_impersonate )) && (( need_ytdlp )); then
@@ -730,17 +807,11 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
     [[ -n $referer ]] && aria_args+=( "--referer=$referer" )
     [[ -n $proxy ]] && aria_args+=( "--all-proxy=$proxy" )
     (( quiet )) && aria_args+=( --quiet=true )
-    if [[ -n $max_speed ]] && max_speed=$(normalize_speed "$max_speed"); then
-        aria_args+=( "--max-download-limit=$max_speed" )
-    elif [[ -n $max_speed ]]; then
-        err "Invalid speed: $max_speed (try 1M, 500K, 1.5M)"
-        exit 2
+    if [[ -n $max_speed_bytes ]]; then
+        aria_args+=( "--max-overall-download-limit=$max_speed_bytes" )
     fi
-    if [[ -n $limit_speed ]] && limit_speed=$(normalize_speed "$limit_speed"); then
-        aria_args+=( "--max-download-limit=$limit_speed" )
-    elif [[ -n $limit_speed ]]; then
-        err "Invalid speed: $limit_speed (try 1M, 500K, 1.5M)"
-        exit 2
+    if [[ -n $limit_speed_bytes ]]; then
+        aria_args+=( "--max-download-limit=$limit_speed_bytes" )
     fi
     # Parse --aria-opts as space-separated; use word splitting intentionally.
     if [[ -n $aria_opts ]]; then
@@ -751,38 +822,69 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
     aria_rc=0
     aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
     if (( aria_rc != 0 )); then
-        warn "aria2c failed (exit $aria_rc) — retrying failed URLs via yt-dlp"
-        # Fall back to yt-dlp for any direct URLs that aria2c couldn't fetch.
-        direct_via_ytdlp=1
+        direct_pending=()
+        for u in "${direct[@]}"; do
+            # yt-dlp cannot fetch magnet/torrent payloads; report those
+            # failures instead of retrying the wrong thing.
+            case ${u,,} in
+                magnet:*|*.torrent) continue ;;
+            esac
+
+            if name=$(url_filename "$u"); then
+                dest=$save_dir/$name
+                if [[ -f ${dest}.aria2 ]]; then
+                    # Remove the incomplete file and its control file before
+                    # retrying.  yt-dlp with --no-overwrites would otherwise
+                    # mistake the aria2c partial for a completed download.
+                    rm -f -- "${dest}.aria2" "$dest"
+                    direct_pending+=("$u")
+                elif [[ ! -f $dest ]]; then
+                    direct_pending+=("$u")
+                fi
+            else
+                direct_pending+=("$u")
+            fi
+        done
+
+        if (( ${#direct_pending[@]} )); then
+            direct_via_ytdlp=1
+            warn "aria2c failed (exit $aria_rc) — retrying ${#direct_pending[@]} incomplete direct download(s) via yt-dlp"
+        else
+            warn "aria2c failed (exit $aria_rc) but no incomplete HTTP(S) downloads were found"
+            rc=$aria_rc
+        fi
     fi
 fi
 
 # ---------------------------------------------------------------------------
-# 8. Direct downloads via yt-dlp (no aria2c available, or --no-aria)
+# 8. Direct downloads via yt-dlp (no aria2c, --no-aria, or aria2c fallback)
 # ---------------------------------------------------------------------------
-if (( direct_via_ytdlp )); then
-    declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
-    yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
-    if [[ $browser != none ]]; then
-        yt_direct+=( --cookies-from-browser "$browser" )
-    fi
-    [[ -n $impersonate ]] && yt_direct+=( --impersonate "$impersonate" )
-    [[ -n $ua ]] && yt_direct+=( --user-agent "$ua" )
-    [[ -n $referer ]] && yt_direct+=( --referer "$referer" )
-    [[ -n $proxy ]] && yt_direct+=( --proxy "$proxy" )
+if (( ${#direct_pending[@]} )); then
+    if ! have yt-dlp; then
+        err "yt-dlp is required to retry the failed direct download(s)"
+        rc=1
+    else
+        declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
+        yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
+        if [[ $browser != none ]]; then
+            yt_direct+=( --cookies-from-browser "$browser" )
+        fi
+        [[ -n $impersonate ]] && yt_direct+=( --impersonate "$impersonate" )
+        [[ -n $ua ]] && yt_direct+=( --user-agent "$ua" )
+        [[ -n $referer ]] && yt_direct+=( --referer "$referer" )
+        [[ -n $proxy ]] && yt_direct+=( --proxy "$proxy" )
 
-    # yt-dlp's generic extractor calls unknown file types "unknown_video".
-    # Use the URL basename so direct files keep their real name.
-    for u in "${direct[@]}"; do
-        name=${u%%\?*}
-        name=${name%%#*}
-        name=${name##*/}
-        case $name in
-            ''|.|..) name='%(title)s.%(ext)s' ;;
-            *) name=${name//%/%%} ;;
-        esac
-        yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" || rc=$?
-    done
+        # yt-dlp's generic extractor calls unknown file types "unknown_video".
+        # Use the URL basename so direct files keep their real name.
+        for u in "${direct_pending[@]}"; do
+            if name=$(url_filename "$u"); then
+                name=${name//%/%%}
+            else
+                name='%(title)s.%(ext)s'
+            fi
+            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" || rc=$?
+        done
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -793,8 +895,8 @@ if (( ${#media[@]} )); then
 
     if (( have_aria && ! no_aria )); then
         aria_dl_args="aria2c:-x 10 -s 10 -k 1M --file-allocation=none --summary-interval=0"
-        [[ -n $max_speed ]]   && aria_dl_args+=" --max-download-limit=$max_speed"
-        [[ -n $limit_speed ]] && aria_dl_args+=" --max-download-limit=$limit_speed"
+        [[ -n $max_speed_bytes ]]   && aria_dl_args+=" --max-overall-download-limit=$max_speed_bytes"
+        [[ -n $limit_speed_bytes ]] && aria_dl_args+=" --max-download-limit=$limit_speed_bytes"
         (( quiet )) && aria_dl_args+=" --quiet=true"
         yt_media+=(
             --downloader "http,https:aria2c"
