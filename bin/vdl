@@ -851,9 +851,10 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
             found=0
             while IFS= read -r img; do
                 [[ -n $img ]] || continue
+                img=${img%%\?*}
                 case ${img,,} in
-                    *favicon*|*apple-touch*|*logo*|*/icons/*|*icon-*)
-                        # site chrome, not content
+                    *favicon*|*apple-touch*|*logo*|*/icons/*|*icon-*|*avatar*|*/thumbs/*)
+                        # site chrome or thumbnail, not full content
                         continue
                         ;;
                 esac
@@ -883,7 +884,8 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 found=1
                 note "Embedded image: $img"
             done < <(curl "${curl_args[@]}" -- "$u" \
-                | grep -oiE '<img[^>]*(src|data-src)="[^"]+\.(jpe?g|png|webp|gif)"' \
+                | sed -E 's/data-rotate-src="[^"]*"//g' \
+                | grep -oiE '<img[^>]*(src|data-src)="[^"]+\.(jpe?g|png|webp|gif)(\?[^"]*)?"' \
                 | grep -oE '(src|data-src)="[^"]+"' \
                 | sed -E 's/^(src|data-src)="//; s/"$//' | sed 's/&amp;/\&/g')
 

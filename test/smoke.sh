@@ -75,7 +75,7 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
     done
 fi
 if [[ ${0##*/} == curl ]]; then
-    printf '<html><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img src="https://cdn.example.com/pic1.jpg"><img src="//cdn.example.com/pic2.png"></html>\n'
+    printf '<html><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img data-rotate-src="https://cdn.example.com/thumbs/grid1.jpg"><img src="https://cdn.example.com/avatar/36x36/u1.jpeg"><img src="data:image/png;base64,AAAA"><img src="https://cdn.example.com/pic1.jpg?v=123"><img data-src="//cdn.example.com/pic2.png?v=9"></html>\n'
     exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
@@ -299,10 +299,11 @@ unset FAKE_GENERIC_PAGE
 if arg_is 'https://cdn.example.com/pic1.jpg' \
     && arg_is 'https://cdn.example.com/pic2.png' \
     && ! arg_has 'favicon' && ! arg_has 'logo' \
+    && ! arg_has 'avatar' && ! arg_has 'grid1' \
     && called aria2c; then
     ok
 else
-    bad "generic pages should queue embedded images but skip favicons/logos"
+    bad "generic pages should queue embedded images but skip favicons/logos/thumbs"
 fi
 
 run -n --no-impersonate 'https://example.com/watch?v=abc'

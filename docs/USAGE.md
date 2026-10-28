@@ -341,9 +341,11 @@ dedicated yt-dlp extractor) are scanned for embedded images: `<img>` tags
 whose source ends in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`. Found
 images are downloaded with aria2c into the save directory.
 
-Favicons, site logos, and UI icons are excluded (by extension and name), and
-`<link>`/`<a>` elements and CSS backgrounds are not scanned, so only
-content images are picked up.
+Favicons, site logos, avatars, UI icons, and thumbnail URLs (`/thumbs/`,
+`data-rotate-src` grid images) are excluded by extension and name, and
+`<link>`/`<a>` elements and CSS backgrounds are not scanned, so only full
+content images are picked up. Cache-busting query strings such as
+`photo.jpg?v=123` are handled automatically.
 
 A page that contains images but no video formats is treated as an image-only
 album, so photo posts download cleanly instead of failing with
