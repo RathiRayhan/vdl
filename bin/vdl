@@ -30,6 +30,83 @@ err()  { printf '%s[!] %s%s\n' "$C_RED" "$*" "$C_OFF" >&2; }
 note() { printf '%s[::] %s%s\n' "$C_DIM" "$*" "$C_OFF" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# --- UI helpers -------------------------------------------------------------
+# All helpers print to stdout and are silenced by --quiet.
+
+# Section header, e.g. "--- Direct downloads via aria2c ---"
+ui_section() {
+    (( quiet )) && return 0
+    printf '\n%s--- %s ---%s\n' "$C_CYN" "$*" "$C_OFF"
+}
+
+# Aligned label/value row inside the banner and summary.
+ui_row() {
+    (( quiet )) && return 0
+    printf '  %s%-9s%s %s\n' "$C_GRN" "$1:" "$C_OFF" "$2"
+}
+
+# A URL/about-to-start line, e.g. "  • file.iso"
+ui_item() {
+    (( quiet )) && return 0
+    printf '  %s•%s %s\n' "$C_DIM" "$C_OFF" "$1"
+}
+
+# A per-URL or per-phase result, e.g. "  [ok] file.iso"
+ui_result() {
+    local code=$1 label=$2
+    (( quiet )) && return 0
+    if (( code == 0 )); then
+        printf '  %s[ok]%s   %s\n' "$C_GRN" "$C_OFF" "$label"
+    else
+        printf '  %s[fail]%s %s\n' "$C_RED" "$C_OFF" "$label"
+    fi
+}
+
+# Human-friendly display name for a URL (basename when possible).
+ui_name() {
+    local name
+    case $1 in
+        magnet:*) printf '%s\n' "$1" ;;
+        *)
+            if name=$(url_filename "$1"); then
+                printf '%s\n' "$name"
+            else
+                printf '%s\n' "$1"
+            fi
+            ;;
+    esac
+}
+
+# Render yt-dlp's \r-separated progress stream as a fixed-width bar plus the
+# speed/ETA text, all on one updating line.  Non-progress output passes
+# through untouched.  Pipe yt-dlp's combined output into this filter.
+yt_bar() {
+    awk -v grn="$C_GRN" -v off="$C_OFF" '
+        BEGIN { RS = "\r"; ORS = ""; w = 20; newline = 1 }
+        /^ *[0-9][0-9.]*% \|/ {
+            p = $0
+            sub(/^ */, "", p)
+            sub(/% .*/, "", p)
+            filled = int(p * w / 100 + 0.5)
+            if (filled < 0) filled = 0
+            if (filled > w) filled = w
+            hashes = dashes = ""
+            for (i = 1; i <= filled; i++) hashes = hashes "#"
+            for (i = filled + 1; i <= w; i++) dashes = dashes "-"
+            rest = $0
+            sub(/^ *[0-9][0-9.]*% \| /, "", rest)
+            printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, rest
+            newline = ($0 ~ /\n$/)
+            next
+        }
+        {
+            printf "%s", $0
+            newline = ($0 ~ /\n$/)
+        }
+        END { if (!newline) printf "\n" }
+    '
+}
+
 usage() {
     cat <<'EOF'
 vdl - smart downloader for Linux (yt-dlp + aria2c)
@@ -50,7 +127,7 @@ Options:
       --no-impersonate     Disable browser TLS impersonation
       --download-dir DIR   Override save directory for this run
       --dry-run            Show what would be done, then exit
-      --quiet              Suppress banner and progress output
+      --quiet              Suppress banner, status and progress output
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
       --limit-speed RATE   Per-download speed limit
@@ -691,7 +768,10 @@ yt_common+=(
     --no-overwrites
 )
 (( quiet )) && yt_common+=( --quiet )
-(( ! quiet )) && yt_common+=( --progress --console-title )
+(( ! quiet )) && yt_common+=(
+    --progress --console-title
+    --progress-template 'download:%(progress._percent_str)s | %(progress._speed_str)s | ETA %(progress._eta_str)s'
+)
 
 # yt-dlp exposes one per-download rate limit, so when both limits are set use
 # the stricter one.  A zero rate means "unlimited" and is ignored here.
@@ -762,16 +842,20 @@ if [[ $display_dir == "$HOME"* ]]; then
 fi
 
 if (( ! quiet )); then
-    printf '\n%s== vdl %s%s\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
-    printf '   %sEngine  :%s %s\n' "$C_GRN" "$C_OFF" "$engine"
-    printf '   %sMode    :%s %s\n' "$C_CYN" "$C_OFF" "$mode"
+    printf '\n%s===============================================%s\n' "$C_CYN" "$C_OFF"
+    printf '  %svdl %s%s  —  smart downloader\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
+    printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
+    ui_row 'Engine' "$engine"
+    ui_row 'Mode' "$mode"
+    ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
     if (( ${#batch_files[@]} )); then
-        printf '   %sBatch   :%s %s links loaded\n' "$C_YEL" "$C_OFF" "${#urls[@]}"
+        ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi
     if (( ${#media[@]} )) && [[ $browser != none ]]; then
-        printf '   %sCookies :%s %s\n' "$C_YEL" "$C_OFF" "$browser"
+        ui_row 'Cookies' "$browser"
     fi
-    printf '   %sSave dir:%s %s\n\n' "$C_DIM" "$C_OFF" "$display_dir"
+    ui_row 'Save dir' "$display_dir"
+    printf '%s===============================================%s\n\n' "$C_CYN" "$C_OFF"
 fi
 
 mkdir -p "$save_dir" || exit 1
@@ -792,11 +876,19 @@ if (( dry_run )); then
 fi
 
 rc=0
+direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+aria_attempted=0
 
 # ---------------------------------------------------------------------------
 # 7. Direct downloads via aria2c
 # ---------------------------------------------------------------------------
 if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
+    aria_attempted=1
+    ui_section "Direct downloads via aria2c"
+    for u in "${direct[@]}"; do
+        ui_item "$(ui_name "$u")"
+    done
+
     declare -a aria_args=(
         -x 16 -s 16 -k 1M
         --continue=true
@@ -821,13 +913,22 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
 
     aria_rc=0
     aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
-    if (( aria_rc != 0 )); then
+    if (( aria_rc == 0 )); then
+        direct_ok=${#direct[@]}
+        for u in "${direct[@]}"; do
+            ui_result 0 "$(ui_name "$u")"
+        done
+    else
         direct_pending=()
         for u in "${direct[@]}"; do
             # yt-dlp cannot fetch magnet/torrent payloads; report those
             # failures instead of retrying the wrong thing.
             case ${u,,} in
-                magnet:*|*.torrent) continue ;;
+                magnet:*|*.torrent)
+                    direct_fail=$((direct_fail + 1))
+                    ui_result 1 "$(ui_name "$u")"
+                    continue
+                    ;;
             esac
 
             if name=$(url_filename "$u"); then
@@ -840,6 +941,9 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
                     direct_pending+=("$u")
                 elif [[ ! -f $dest ]]; then
                     direct_pending+=("$u")
+                else
+                    direct_ok=$((direct_ok + 1))
+                    ui_result 0 "$name"
                 fi
             else
                 direct_pending+=("$u")
@@ -860,9 +964,14 @@ fi
 # 8. Direct downloads via yt-dlp (no aria2c, --no-aria, or aria2c fallback)
 # ---------------------------------------------------------------------------
 if (( ${#direct_pending[@]} )); then
+    ui_section "Direct downloads via yt-dlp"
     if ! have yt-dlp; then
         err "yt-dlp is required to retry the failed direct download(s)"
         rc=1
+        direct_fail=$((direct_fail + ${#direct_pending[@]}))
+        for u in "${direct_pending[@]}"; do
+            ui_result 1 "$(ui_name "$u")"
+        done
     else
         declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
         yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
@@ -882,7 +991,16 @@ if (( ${#direct_pending[@]} )); then
             else
                 name='%(title)s.%(ext)s'
             fi
-            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" || rc=$?
+            (( aria_attempted )) || ui_item "$(ui_name "$u")"
+            u_rc=0
+            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+            (( u_rc )) && rc=$u_rc
+            if (( u_rc )); then
+                direct_fail=$((direct_fail + 1))
+            else
+                direct_ok=$((direct_ok + 1))
+            fi
+            ui_result $u_rc "$(ui_name "$u")"
         done
     fi
 fi
@@ -891,6 +1009,11 @@ fi
 # 9. Media / page downloads via yt-dlp
 # ---------------------------------------------------------------------------
 if (( ${#media[@]} )); then
+    ui_section "Media / page downloads via yt-dlp"
+    for u in "${media[@]}"; do
+        ui_item "$u"
+    done
+
     declare -a yt_media=( "${yt_common[@]}" )
 
     if (( have_aria && ! no_aria )); then
@@ -938,12 +1061,42 @@ if (( ${#media[@]} )); then
         )
     fi
 
-    yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" || rc=$?
+    media_rc=0
+    yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
+    (( media_rc )) && rc=$media_rc
+    if (( media_rc == 0 )); then
+        media_ok=${#media[@]}
+    else
+        media_fail=${#media[@]}
+    fi
+    for u in "${media[@]}"; do
+        ui_result $media_rc "$u"
+    done
 fi
 
 # ---------------------------------------------------------------------------
 # 10. Tidy up the temp folder (also handled by EXIT trap above)
 # ---------------------------------------------------------------------------
 cleanup_tmp
+
+ui_section "Summary"
+ui_row 'Total' "${#urls[@]}"
+if (( ${#direct[@]} )); then
+    ui_row 'Direct' "$direct_ok ok, $direct_fail failed"
+fi
+if (( ${#media[@]} )); then
+    ui_row 'Media' "$media_ok ok, $media_fail failed"
+fi
+if (( SECONDS >= 60 )); then
+    ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
+else
+    ui_row 'Time' "${SECONDS}s"
+fi
+ui_row 'Save dir' "$display_dir"
+if (( rc == 0 && direct_fail == 0 && media_fail == 0 )); then
+    ui_result 0 "all downloads finished"
+else
+    ui_result 1 "some downloads failed"
+fi
 
 exit "$rc"

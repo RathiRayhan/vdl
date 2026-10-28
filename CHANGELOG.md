@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Redesigned terminal output: a restyled banner, section headers per download
+  phase, per-URL status lines with `[ok]`/`[fail]` markers, and an end-of-run
+  summary with per-engine results, elapsed time, and save directory.
+  `--quiet` still suppresses all of it.
+- yt-dlp downloads now render a live progress bar
+  (`[#########-----------] 43.3% 149KiB/s | ETA 00:01`) that updates in place;
+  aria2c keeps its native per-file progress line.
+- `docs/USAGE.md`: a user guide covering installation, setup, every feature
+  with examples, and uninstallation.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)
   without invoking yt-dlp or aria2c.
 - `--download-dir DIR` flag: override `VDL_SAVE_DIR` for a single invocation.

@@ -18,7 +18,7 @@ _vdl() {
         '--no-impersonate[disable browser TLS impersonation]' \
         '--download-dir=[override save directory]:dir:_files -d' \
         '--dry-run[show what would be done]' \
-        '--quiet[suppress banner and progress]' \
+        '--quiet[suppress banner, status and progress]' \
         '--aria-opts=[extra options for aria2c]:aria2c options' \
         '--max-speed=[overall download speed limit]:rate:' \
         '--limit-speed=[per-download speed limit]:rate:' \

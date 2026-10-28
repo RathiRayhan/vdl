@@ -237,6 +237,30 @@ else
     bad "--quiet should suppress the banner but keep dry-run details"
 fi
 
+# --- UI output: status lines and summary ------------------------------------
+run -n 'https://example.com/file.iso'
+if grep -q -- '--- Summary ---' "$out" && grep -q '\[ok\]' "$out"; then
+    ok
+else
+    bad "non-quiet runs should print per-URL status and a summary"
+fi
+
+run -n --quiet 'https://example.com/file.iso'
+if [[ ! -s $out ]]; then
+    ok
+else
+    bad "--quiet should print nothing to stdout"
+fi
+
+export FAKE_ARIA_FAIL=yes
+run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
+unset FAKE_ARIA_FAIL
+if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out"; then
+    ok
+else
+    bad "UI should mark failed downloads separately from retried ones"
+fi
+
 # --- magnet link routing ---------------------------------------------------
 if run -n 'magnet:?xt=urn:btih:abc' && called aria2c && ! called yt-dlp; then
     ok

@@ -54,6 +54,9 @@ speed limits, and unknown yt-dlp options.
   with CLI flags taking precedence.
 - **Preview and diagnostics:** `--dry-run` shows the resolved plan without
   downloading anything.
+- **Friendly output:** a startup banner, section headers, per-URL status
+  lines, and an end-of-run summary; yt-dlp progress renders as a live bar;
+  `--quiet` silences it all.
 - **Packaging:** installer/uninstaller, bash/zsh/fish completions, a man page,
   and a network-free smoke test suite.
 
@@ -70,6 +73,9 @@ speed limits, and unknown yt-dlp options.
 
 `vdl` checks what is available at run time: without `aria2c` it downloads
 direct files with yt-dlp, and without `curl_cffi` it skips impersonation.
+
+For a complete walk-through of installation, setup, every feature with
+examples, and uninstallation, see **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## Install
 
@@ -351,6 +357,7 @@ bin/vdl               the command
 install.sh            installer / uninstaller
 completions/          bash, zsh and fish completions
 man/vdl.1             man page
+docs/USAGE.md         installation, setup, usage and uninstallation guide
 test/smoke.sh         stub-based test suite (no network required)
 Makefile              convenience targets (test, lint, install)
 ```
