@@ -337,9 +337,13 @@ unaffected.
 ### Embedded images
 
 Album pages that fall back to yt-dlp's generic extractor (sites without a
-dedicated yt-dlp extractor) are scanned for embedded images: `<img>` tags and
-links ending in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`. Found images are
-downloaded with aria2c into the save directory.
+dedicated yt-dlp extractor) are scanned for embedded images: `<img>` tags
+whose source ends in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`. Found
+images are downloaded with aria2c into the save directory.
+
+Favicons, site logos, and UI icons are excluded (by extension and name), and
+`<link>`/`<a>` elements and CSS backgrounds are not scanned, so only
+content images are picked up.
 
 A page that contains images but no video formats is treated as an image-only
 album, so photo posts download cleanly instead of failing with

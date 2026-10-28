@@ -75,7 +75,7 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
     done
 fi
 if [[ ${0##*/} == curl ]]; then
-    printf '<html><img src="https://cdn.example.com/pic1.jpg"><img src="//cdn.example.com/pic2.png"></html>\n'
+    printf '<html><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img src="https://cdn.example.com/pic1.jpg"><img src="//cdn.example.com/pic2.png"></html>\n'
     exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
@@ -298,10 +298,11 @@ run -n --no-impersonate 'https://example.com/watch?v=abc'
 unset FAKE_GENERIC_PAGE
 if arg_is 'https://cdn.example.com/pic1.jpg' \
     && arg_is 'https://cdn.example.com/pic2.png' \
+    && ! arg_has 'favicon' && ! arg_has 'logo' \
     && called aria2c; then
     ok
 else
-    bad "generic pages should also queue embedded images for direct download"
+    bad "generic pages should queue embedded images but skip favicons/logos"
 fi
 
 run -n --no-impersonate 'https://example.com/watch?v=abc'

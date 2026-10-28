@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pages handled by yt-dlp's generic extractor are now scanned for embedded
   images (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`), which are downloaded
   with aria2c.  Photo-only albums no longer fail with `Unsupported URL`.
+  Only `<img>` sources are scanned, and favicon/logo/icon URLs are excluded.
   Known-site extractors and `--dry-run` are untouched.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.

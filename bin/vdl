@@ -851,6 +851,12 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
             found=0
             while IFS= read -r img; do
                 [[ -n $img ]] || continue
+                case ${img,,} in
+                    *favicon*|*apple-touch*|*logo*|*/icons/*|*icon-*)
+                        # site chrome, not content
+                        continue
+                        ;;
+                esac
                 case $img in
                     //*) img="https:$img" ;;
                     http://*|https://*) ;;
@@ -877,8 +883,9 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 found=1
                 note "Embedded image: $img"
             done < <(curl "${curl_args[@]}" -- "$u" \
-                | grep -oiE '(src|data-src|href)="[^"]+\.(jpe?g|png|webp|gif)"' \
-                | sed -E 's/^[^=]+="//; s/"$//' | sed 's/&amp;/\&/g')
+                | grep -oiE '<img[^>]*(src|data-src)="[^"]+\.(jpe?g|png|webp|gif)"' \
+                | grep -oE '(src|data-src)="[^"]+"' \
+                | sed -E 's/^(src|data-src)="//; s/"$//' | sed 's/&amp;/\&/g')
 
             if (( images_only && found )); then
                 # yt-dlp has nothing to download for this page; the images
