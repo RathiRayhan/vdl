@@ -50,6 +50,9 @@ speed limits, and unknown yt-dlp options.
   and retried with yt-dlp without re-downloading completed files.
 - **Duplicate cleanup:** `--dedupe` removes files downloaded in the same run
   whose content is identical to another, keeping the oldest copy (opt-in).
+- **Embedded images:** pages handled by yt-dlp's generic extractor are scanned
+  for `<img>` links; photos download with aria2c, and image-only albums work
+  without a failing yt-dlp run.
 - **Predictable defaults:** yt-dlp runs with `--ignore-config` plus vdl's own
   defaults, optionally extended by `~/.config/vdl/yt-dlp.conf`.
 - **Configuration:** environment variables and a small `KEY=VALUE` config file,

@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   another file downloaded in the same run.  Only same-size files are hashed
   and the oldest copy is always kept, so pre-existing files are never
   deleted.  Opt-in; off by default.
+- Pages handled by yt-dlp's generic extractor are now scanned for embedded
+  images (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`), which are downloaded
+  with aria2c.  Photo-only albums no longer fail with `Unsupported URL`.
+  Known-site extractors and `--dry-run` are untouched.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)

@@ -800,7 +800,7 @@ for u in "${urls[@]}"; do
     path=${path%%#*}
     if [[ $path == magnet:* ]] || [[ $path =~ \.torrent$ ]]; then
         direct+=("$u")
-    elif [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|gz|xz|zst|bz2|pdf|epub|apk|bin|img)$ ]]; then
+    elif [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|gz|xz|zst|bz2|pdf|epub|apk|bin|img|jpe?g|png|webp|gif)$ ]]; then
         direct+=("$u")
     elif (( ! audio )) && [[ $path =~ \.(mp4|mkv|webm|avi|mov|flv)$ ]]; then
         direct+=("$u")
@@ -811,6 +811,87 @@ done
 
 direct_via_ytdlp=0
 declare -a direct_pending=()
+
+# Pages handled by yt-dlp's generic extractor often embed images alongside
+# videos; yt-dlp ignores <img> tags, so scan such pages and download the
+# images as direct files.  Known-site extractors (youtube, html5, ...) are
+# left alone, and --dry-run never touches the network.  A page with images
+# but no video formats is treated as an image-only album.
+if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
+    have curl || note "curl not installed: skipping embedded image scan"
+    if have curl; then
+        declare -a media_kept=()
+        for u in "${media[@]}"; do
+            case $u in
+                http://*|https://*) ;;
+                *) media_kept+=("$u"); continue ;;
+            esac
+
+            probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+                --print '%(extractor)s' -- "$u" 2>&1)
+            probe_rc=$?
+            extractor=${probe_out##*$'\n'}
+            images_only=0
+            case $probe_out in
+                *"Unsupported URL"*|*"No video formats found"*)
+                    [[ $probe_rc != 0 ]] && images_only=1
+                    ;;
+            esac
+            if [[ $probe_rc == 0 && -n $extractor ]] \
+                && [[ $extractor != generic && $extractor != generic:* ]]; then
+                media_kept+=("$u")
+                continue
+            fi
+
+            curl_args=( -sL --max-time 30 )
+            [[ -n $ua ]] && curl_args+=( -A "$ua" )
+            [[ -n $referer ]] && curl_args+=( -e "$referer" )
+            [[ -n $proxy ]] && curl_args+=( -x "$proxy" )
+
+            found=0
+            while IFS= read -r img; do
+                [[ -n $img ]] || continue
+                case $img in
+                    //*) img="https:$img" ;;
+                    http://*|https://*) ;;
+                    /*)
+                        scheme_host=${u#*//}
+                        scheme_host=${scheme_host%%/*}
+                        img="https://$scheme_host$img"
+                        ;;
+                    *)
+                        img="${u%/*}/$img"
+                        ;;
+                esac
+                img=${img%%[[:space:]]*}
+                saw=0
+                for q in "${urls[@]}" "${direct[@]}" "${media[@]}"; do
+                    if [[ $q == "$img" ]]; then
+                        saw=1
+                        break
+                    fi
+                done
+                (( saw )) && continue
+                urls+=("$img")
+                direct+=("$img")
+                found=1
+                note "Embedded image: $img"
+            done < <(curl "${curl_args[@]}" -- "$u" \
+                | grep -oiE '(src|data-src|href)="[^"]+\.(jpe?g|png|webp|gif)"' \
+                | sed -E 's/^[^=]+="//; s/"$//' | sed 's/&amp;/\&/g')
+
+            if (( images_only && found )); then
+                # yt-dlp has nothing to download for this page; the images
+                # are the whole album.
+                note "No video formats on page — ${found} embedded image(s) queued"
+            else
+                media_kept+=("$u")
+            fi
+        done
+        media=("${media_kept[@]}")
+    fi
+fi
+
 if (( ${#direct[@]} )); then
     if (( ! have_aria || no_aria )); then
         direct_via_ytdlp=1

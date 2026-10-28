@@ -334,6 +334,18 @@ oldest copy. Files that existed before the run and files in `<save_dir>/.tmp`
 are never touched. The flag is off by default, so other downloads are
 unaffected.
 
+### Embedded images
+
+Album pages that fall back to yt-dlp's generic extractor (sites without a
+dedicated yt-dlp extractor) are scanned for embedded images: `<img>` tags and
+links ending in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`. Found images are
+downloaded with aria2c into the save directory.
+
+A page that contains images but no video formats is treated as an image-only
+album, so photo posts download cleanly instead of failing with
+`ERROR: Unsupported URL`. Pages handled by a known extractor (YouTube,
+html5, ...) are not scanned, and `--dry-run` never touches the network.
+
 ### Terminal output
 
 A normal run shows:

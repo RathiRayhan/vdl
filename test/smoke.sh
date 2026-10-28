@@ -25,7 +25,7 @@ export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -37,6 +37,15 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --list-impersonate-targets "* ]]; then
         printf 'Chrome      -    curl_cffi\n'
     else
         printf 'Chrome      -    curl_cffi (unavailable)\n'
+    fi
+    exit 0
+fi
+if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
+    # vdl's embedded-image probe: answer with the page's extractor name.
+    if [[ ${FAKE_GENERIC_PAGE:-} == yes ]]; then
+        printf 'generic\n'
+    else
+        printf 'youtube\n'
     fi
     exit 0
 fi
@@ -64,6 +73,10 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
                 ;;
         esac
     done
+fi
+if [[ ${0##*/} == curl ]]; then
+    printf '<html><img src="https://cdn.example.com/pic1.jpg"><img src="//cdn.example.com/pic2.png"></html>\n'
+    exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
     printf 'https://example.com/from-clipboard\n'
@@ -277,6 +290,25 @@ if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out"; then
     ok
 else
     bad "UI should mark failed downloads separately from retried ones"
+fi
+
+# --- embedded images on generic pages --------------------------------------
+export FAKE_GENERIC_PAGE=yes
+run -n --no-impersonate 'https://example.com/watch?v=abc'
+unset FAKE_GENERIC_PAGE
+if arg_is 'https://cdn.example.com/pic1.jpg' \
+    && arg_is 'https://cdn.example.com/pic2.png' \
+    && called aria2c; then
+    ok
+else
+    bad "generic pages should also queue embedded images for direct download"
+fi
+
+run -n --no-impersonate 'https://example.com/watch?v=abc'
+if ! called curl && ! called aria2c; then
+    ok
+else
+    bad "known-extractor pages should not be scraped for images"
 fi
 
 # --- magnet link routing ---------------------------------------------------
