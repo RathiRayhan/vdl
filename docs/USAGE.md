@@ -318,6 +318,22 @@ directory, cookies, headers, proxy, impersonation, and passthrough options.
 Magnet/torrent downloads are not retried this way. If nothing is retryable,
 vdl exits with aria2c's status.
 
+### Removing duplicate downloads
+
+Some sites list the same video more than once per playlist, so yt-dlp
+downloads identical files under different names. `--dedupe` cleans that up
+after the run:
+
+```sh
+vdl --dedupe "https://www.erome.com/a/..."
+```
+
+After downloading, vdl compares the files created during that run — first by
+size, then by full content hash — and removes duplicates, always keeping the
+oldest copy. Files that existed before the run and files in `<save_dir>/.tmp`
+are never touched. The flag is off by default, so other downloads are
+unaffected.
+
 ### Terminal output
 
 A normal run shows:

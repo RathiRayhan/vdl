@@ -47,6 +47,24 @@ done
 if [[ ${0##*/} == aria2c && ${FAKE_ARIA_FAIL:-} == yes ]]; then
     exit 1
 fi
+if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
+    dir=''
+    prev=''
+    for a in "$@"; do
+        [[ $prev == -d ]] && dir=$a
+        prev=$a
+    done
+    mkdir -p "$dir"
+    for a in "$@"; do
+        case $a in
+            http://*|https://*)
+                name=${a##*/}
+                name=${name%%\?*}
+                [[ -n $name ]] && printf 'same-content\n' > "$dir/$name"
+                ;;
+        esac
+    done
+fi
 if [[ ${0##*/} == wl-paste ]]; then
     printf 'https://example.com/from-clipboard\n'
 fi
@@ -360,6 +378,27 @@ if [[ $rc -eq 0 ]] \
     ok
 else
     bad "aria2c fallback should remove partials and retry only failed direct files"
+fi
+
+# --- dedupe removes identical files from this run ---------------------------
+export FAKE_ARIA_DUP=yes
+run -n --dedupe 'https://example.com/dup-a.iso' 'https://example.com/dup-b.iso'
+unset FAKE_ARIA_DUP
+if [[ ( -e $VDL_SAVE_DIR/dup-a.iso || -e $VDL_SAVE_DIR/dup-b.iso ) ]] \
+    && [[ ! ( -e $VDL_SAVE_DIR/dup-a.iso && -e $VDL_SAVE_DIR/dup-b.iso ) ]] \
+    && grep -q 'Removed duplicate' "$err"; then
+    ok
+else
+    bad "--dedupe should keep one copy of identical files from this run"
+fi
+
+export FAKE_ARIA_DUP=yes
+run -n 'https://example.com/dup-c.iso' 'https://example.com/dup-d.iso'
+unset FAKE_ARIA_DUP
+if [[ -e $VDL_SAVE_DIR/dup-c.iso && -e $VDL_SAVE_DIR/dup-d.iso ]]; then
+    ok
+else
+    bad "without --dedupe both copies should remain"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------

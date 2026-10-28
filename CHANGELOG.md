@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - yt-dlp downloads now render a live progress bar
   (`[#########-----------] 43.3% 149KiB/s | ETA 00:01`) that updates in place;
   aria2c keeps its native per-file progress line.
+- `--dedupe` flag: after the run, removes files whose content is identical to
+  another file downloaded in the same run.  Only same-size files are hashed
+  and the oldest copy is always kept, so pre-existing files are never
+  deleted.  Opt-in; off by default.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)

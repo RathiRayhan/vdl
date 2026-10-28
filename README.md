@@ -48,6 +48,8 @@ speed limits, and unknown yt-dlp options.
   suffixes, mapped correctly to aria2c and yt-dlp.
 - **Safe recovery:** when aria2c fails, incomplete direct files are cleaned up
   and retried with yt-dlp without re-downloading completed files.
+- **Duplicate cleanup:** `--dedupe` removes files downloaded in the same run
+  whose content is identical to another, keeping the oldest copy (opt-in).
 - **Predictable defaults:** yt-dlp runs with `--ignore-config` plus vdl's own
   defaults, optionally extended by `~/.config/vdl/yt-dlp.conf`.
 - **Configuration:** environment variables and a small `KEY=VALUE` config file,

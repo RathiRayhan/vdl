@@ -80,6 +80,10 @@ Per-download speed limit.
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
 .TP
+.B \-\-dedupe
+After downloading, remove files from this run whose content is identical to
+another file downloaded in the same run (the oldest copy is kept).
+.TP
 .B \-\-quiet
 Suppress the banner, status lines, summary, and downloader progress output.
 .TP

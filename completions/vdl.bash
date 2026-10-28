@@ -26,7 +26,7 @@ _vdl() {
     esac
 
     if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --quiet --aria-opts --max-speed --limit-speed --referer --user-agent --proxy" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --dedupe --quiet --aria-opts --max-speed --limit-speed --referer --user-agent --proxy" -- "$cur") )
     elif [[ $cur == *=* && $prev == --* ]]; then
         return
     else

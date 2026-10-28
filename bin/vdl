@@ -137,6 +137,56 @@ yt_bar() {
     '
 }
 
+# With --dedupe: remove files created during this run whose content is
+# identical to another file from the same run.  Only same-size files are
+# hashed, and the oldest copy is always kept, so a file that already existed
+# before this run can never be removed.
+dedupe_saved() {
+    (( dedupe )) || return 0
+
+    local f size h dt keep keep_t
+    local -A size_groups=()
+    local -a files
+    local -A hash_groups
+
+    while IFS= read -r -d '' f; do
+        case ${f##*/} in
+            *.aria2|*.part|*.ytdl|*.temp) continue ;;
+        esac
+        size=$(stat -c %s -- "$f" 2>/dev/null) || continue
+        size_groups[$size]+=$f$'\n'
+    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
+        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+
+    for size in "${!size_groups[@]}"; do
+        mapfile -t files <<< "${size_groups[$size]%$'\n'}"
+        (( ${#files[@]} > 1 )) || continue
+        hash_groups=()
+        for f in "${files[@]}"; do
+            h=$(sha256sum -- "$f" 2>/dev/null | awk '{print $1}') || continue
+            [[ -n $h ]] && hash_groups[$h]+=$f$'\n'
+        done
+        for h in "${!hash_groups[@]}"; do
+            mapfile -t files <<< "${hash_groups[$h]%$'\n'}"
+            (( ${#files[@]} > 1 )) || continue
+            keep=${files[0]}
+            keep_t=$(stat -c %Y -- "$keep" 2>/dev/null || echo 0)
+            for f in "${files[@]:1}"; do
+                dt=$(stat -c %Y -- "$f" 2>/dev/null || echo 0)
+                if (( dt < keep_t )); then
+                    rm -f -- "$keep"
+                    note "Removed duplicate: ${keep#"$save_dir"/} (same content as ${f#"$save_dir"/})"
+                    keep=$f
+                    keep_t=$dt
+                else
+                    rm -f -- "$f"
+                    note "Removed duplicate: ${f#"$save_dir"/} (same content as ${keep#"$save_dir"/})"
+                fi
+            done
+        done
+    done
+}
+
 usage() {
     cat <<'EOF'
 vdl - smart downloader for Linux (yt-dlp + aria2c)
@@ -157,6 +207,7 @@ Options:
       --no-impersonate     Disable browser TLS impersonation
       --download-dir DIR   Override save directory for this run
       --dry-run            Show what would be done, then exit
+      --dedupe             Remove duplicate files downloaded in this run
       --quiet              Suppress banner, status and progress output
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
@@ -369,6 +420,7 @@ proxy=''
 download_dir=''
 quiet=0
 dry_run=0
+dedupe=0
 aria_opts=''
 max_speed=''
 limit_speed=''
@@ -497,6 +549,10 @@ while (( $# > 0 )); do
             ;;
         --dry-run)
             dry_run=1
+            prev_unknown_flag=0
+            ;;
+        --dedupe)
+            dedupe=1
             prev_unknown_flag=0
             ;;
         --quiet)
@@ -908,6 +964,7 @@ fi
 rc=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
 aria_attempted=0
+dedupe_mark=$(date +%s)
 
 # ---------------------------------------------------------------------------
 # 7. Direct downloads via aria2c
@@ -1108,6 +1165,8 @@ fi
 # 10. Tidy up the temp folder (also handled by EXIT trap above)
 # ---------------------------------------------------------------------------
 cleanup_tmp
+
+dedupe_saved
 
 ui_section "Summary"
 ui_row 'Total' "${#urls[@]}"
