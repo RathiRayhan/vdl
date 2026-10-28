@@ -113,7 +113,7 @@ yt_bar() {
             for (i = filled + 1; i <= w; i++) dashes = dashes "-"
             rest = $0
             sub(/^ *[0-9][0-9.]*% \| /, "", rest)
-            sub(/^ \.\//, "  ", rest)
+            sub(/^\.\//, "  ", rest)
             n = split(rest, pl, "\n")
             printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, pl[1]
             for (i = 2; i <= n; i++) printf "\n%s", colorize(pl[i])
@@ -812,11 +812,11 @@ done
 direct_via_ytdlp=0
 declare -a direct_pending=()
 
-# Pages handled by yt-dlp's generic extractor often embed images alongside
-# videos; yt-dlp ignores <img> tags, so scan such pages and download the
-# images as direct files.  Known-site extractors (youtube, html5, ...) are
-# left alone, and --dry-run never touches the network.  A page with images
-# but no video formats is treated as an image-only album.
+# Pages without a dedicated yt-dlp extractor (generic/html5) often embed
+# images alongside videos; yt-dlp ignores <img> tags, so scan such pages and
+# download the images as direct files.  Known-site extractors (youtube, ...)
+# are left alone, and --dry-run never touches the network.  A page with
+# images but no video formats is treated as an image-only album.
 if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
     have curl || note "curl not installed: skipping embedded image scan"
     if have curl; then
@@ -831,6 +831,7 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 --print '%(extractor)s' -- "$u" 2>&1)
             probe_rc=$?
             extractor=${probe_out##*$'\n'}
+            extractor=${extractor%%|*}
             images_only=0
             case $probe_out in
                 *"Unsupported URL"*|*"No video formats found"*)
@@ -838,10 +839,28 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                     ;;
             esac
             if [[ $probe_rc == 0 && -n $extractor ]] \
-                && [[ $extractor != generic && $extractor != generic:* ]]; then
+                && [[ $extractor != generic && $extractor != generic:* && $extractor != html5 ]]; then
                 media_kept+=("$u")
                 continue
             fi
+
+            # Collect the playlist's media URLs.  Their directory prefixes
+            # scope the page's images to this album, and their basenames
+            # identify video covers that must not be treated as photos.
+            media_names=$'\n'
+            media_dirs=$'\n'
+            while IFS= read -r murl; do
+                murl=${murl%%\?*}
+                [[ $murl == http://* || $murl == https://* ]] || continue
+                mb=${murl##*/}
+                mb=${mb%.*}
+                [[ -n $mb ]] && media_names+=$mb$'\n'
+                mdir=${murl#*://*/}
+                mdir=${mdir%/*}
+                [[ $mdir == "${murl#*://*/}" ]] && mdir=''
+                [[ -n $mdir ]] && media_dirs+=$mdir$'\n'
+            done < <(yt-dlp --ignore-config --quiet --simulate \
+                --print '%(url)s' -- "$u" 2>/dev/null)
 
             curl_args=( -sL --max-time 30 )
             [[ -n $ua ]] && curl_args+=( -A "$ua" )
@@ -871,6 +890,23 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                         ;;
                 esac
                 img=${img%%[[:space:]]*}
+
+                # A /thumb/ path is usually the preview of the full image
+                # next to it.
+                [[ ${img,,} == */thumb/* ]] && img=${img//\/thumb\//\/}
+
+                # Scope to this album and skip video covers when the page has
+                # a media playlist.
+                if [[ $media_names != $'\n' ]]; then
+                    ipath=${img#*://*/}
+                    idir=${ipath%/*}
+                    [[ $idir == "$ipath" ]] && idir=''
+                    [[ $media_dirs == *$'\n'"$idir"$'\n'* ]] || continue
+                    ibase=${ipath##*/}
+                    ibase=${ibase%.*}
+                    [[ $media_names == *$'\n'"$ibase"$'\n'* ]] && continue
+                fi
+
                 saw=0
                 for q in "${urls[@]}" "${direct[@]}" "${media[@]}"; do
                     if [[ $q == "$img" ]]; then
@@ -885,9 +921,10 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 note "Embedded image: $img"
             done < <(curl "${curl_args[@]}" -- "$u" \
                 | sed -E 's/data-rotate-src="[^"]*"//g' \
-                | grep -oiE '<img[^>]*(src|data-src)="[^"]+\.(jpe?g|png|webp|gif)(\?[^"]*)?"' \
-                | grep -oE '(src|data-src)="[^"]+"' \
-                | sed -E 's/^(src|data-src)="//; s/"$//' | sed 's/&amp;/\&/g')
+                | sed -E "s/data-rotate-src='[^']*'//g" \
+                | grep -oiE "<img[^>]*(src|data-src)=[\"'][^\"']+\.(jpe?g|png|webp|gif)(\?[^\"']*)?[\"']" \
+                | grep -oE "(src|data-src)=[\"'][^\"']+[\"']" \
+                | sed -E "s/^(src|data-src)=[\"']//; s/[\"']$//" | sed 's/&amp;/\&/g')
 
             if (( images_only && found )); then
                 # yt-dlp has nothing to download for this page; the images

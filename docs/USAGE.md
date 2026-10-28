@@ -336,16 +336,20 @@ unaffected.
 
 ### Embedded images
 
-Album pages that fall back to yt-dlp's generic extractor (sites without a
-dedicated yt-dlp extractor) are scanned for embedded images: `<img>` tags
-whose source ends in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`. Found
-images are downloaded with aria2c into the save directory.
+Pages without a dedicated yt-dlp extractor (the `generic` and `html5`
+extractors) are scanned for embedded images: `<img>` tags whose source ends
+in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`, with single or double
+quotes and `?v=...` cache-busters. Found images are downloaded with aria2c
+into the save directory, and `/thumb/` preview URLs are upgraded to the
+full-size image next to them.
 
-Favicons, site logos, avatars, UI icons, and thumbnail URLs (`/thumbs/`,
-`data-rotate-src` grid images) are excluded by extension and name, and
-`<link>`/`<a>` elements and CSS backgrounds are not scanned, so only full
-content images are picked up. Cache-busting query strings such as
-`photo.jpg?v=123` are handled automatically.
+The scan is scoped to the album: images must live in the same directory tree
+as the page's videos, and thumbnails whose name matches a video in the
+playlist (video covers) are skipped. Favicons, logos, avatars, UI icons,
+and sidebar/other-album thumbnails are excluded. A page that contains images
+but no video formats is treated as an image-only album. Known-site
+extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
+network.
 
 A page that contains images but no video formats is treated as an image-only
 album, so photo posts download cleanly instead of failing with
