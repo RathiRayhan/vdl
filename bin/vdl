@@ -79,10 +79,28 @@ ui_name() {
 
 # Render yt-dlp's \r-separated progress stream as a fixed-width bar plus the
 # speed/ETA text, all on one updating line.  Non-progress output passes
-# through untouched.  Pipe yt-dlp's combined output into this filter.
+# through untouched, with the leading [tag]/WARNING:/ERROR: prefix colored to
+# match vdl's palette (yt-dlp skips its own colors when piped).
 yt_bar() {
-    awk -v grn="$C_GRN" -v off="$C_OFF" '
-        BEGIN { RS = "\r"; ORS = ""; w = 20; newline = 1 }
+    awk -v grn="$C_GRN" -v yel="$C_YEL" -v red="$C_RED" -v off="$C_OFF" '
+        BEGIN { RS = "\r"; ORS = ""; w = 20; newline = 1; pending = 0 }
+
+        function colorize(seg) {
+            if (seg ~ /^\[[A-Za-z0-9_.-]+\]/) {
+                match(seg, /^\[[A-Za-z0-9_.-]+\]/)
+                return grn substr(seg, 1, RLENGTH) off substr(seg, RLENGTH + 1)
+            }
+            if (seg ~ /^WARNING:/) {
+                sub(/^WARNING:/, "", seg)
+                return yel "WARNING:" off seg
+            }
+            if (seg ~ /^ERROR:/) {
+                sub(/^ERROR:/, "", seg)
+                return red "ERROR:" off seg
+            }
+            return seg
+        }
+
         /^ *[0-9][0-9.]*% \|/ {
             p = $0
             sub(/^ */, "", p)
@@ -95,15 +113,26 @@ yt_bar() {
             for (i = filled + 1; i <= w; i++) dashes = dashes "-"
             rest = $0
             sub(/^ *[0-9][0-9.]*% \| /, "", rest)
-            printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, rest
+            n = split(rest, pl, "\n")
+            printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, pl[1]
+            for (i = 2; i <= n; i++) printf "\n%s", colorize(pl[i])
             newline = ($0 ~ /\n$/)
+            pending = !newline
             next
         }
         {
-            printf "%s", $0
+            if (pending && $0 !~ /^\n/) printf "\n"
+            n = split($0, parts, "\n")
+            out = ""
+            for (i = 1; i <= n; i++) {
+                out = out colorize(parts[i])
+                if (i < n) out = out "\n"
+            }
+            printf "%s", out
             newline = ($0 ~ /\n$/)
+            pending = !newline
         }
-        END { if (!newline) printf "\n" }
+        END { if (pending) printf "\n" }
     '
 }
 
