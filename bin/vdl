@@ -113,6 +113,7 @@ yt_bar() {
             for (i = filled + 1; i <= w; i++) dashes = dashes "-"
             rest = $0
             sub(/^ *[0-9][0-9.]*% \| /, "", rest)
+            sub(/^ \.\//, "  ", rest)
             n = split(rest, pl, "\n")
             printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, pl[1]
             for (i = 2; i <= n; i++) printf "\n%s", colorize(pl[i])
@@ -799,7 +800,7 @@ yt_common+=(
 (( quiet )) && yt_common+=( --quiet )
 (( ! quiet )) && yt_common+=(
     --progress --console-title
-    --progress-template 'download:%(progress._percent_str)s | %(progress._speed_str)s | ETA %(progress._eta_str)s'
+    --progress-template 'download:%(progress._percent_str)s | %(progress._downloaded_bytes_str)s/%(progress._total_bytes_str)s | %(progress._speed_str)s | ETA %(progress._eta_str)s'
 )
 
 # yt-dlp exposes one per-download rate limit, so when both limits are set use
