@@ -1127,6 +1127,7 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
     done
 
     declare -a aria_args=(
+        -Z
         -x 16 -s 16 -k 1M
         --continue=true
         --file-allocation=none
@@ -1223,6 +1224,7 @@ if (( ${#img_urls[@]} )); then
         img_rc=0
         if (( use_aria )); then
             declare -a img_aria=(
+                -Z
                 -x 4 -s 4 -k 1M
                 --continue=true
                 --file-allocation=none
@@ -1243,6 +1245,25 @@ if (( ${#img_urls[@]} )); then
         fi
 
         if (( use_aria )); then
+            # Only retry the images that are still missing; -Z downloads
+            # sequentially, so some may have completed before the failure.
+            declare -a retry_batch=()
+            for u in "${batch[@]}"; do
+                if name=$(url_filename "$u"); then
+                    dest=$save_dir/$name
+                    rm -f -- "${dest}.aria2"
+                    [[ -e $dest ]] && continue
+                fi
+                retry_batch+=("$u")
+            done
+            if (( ${#retry_batch[@]} == 0 )); then
+                for u in "${batch[@]}"; do
+                    ui_result 0 "$(ui_name "$u")"
+                done
+                img_ok=$((img_ok + ${#batch[@]}))
+                continue
+            fi
+            batch=("${retry_batch[@]}")
             warn "aria2c failed (exit $img_rc) — retrying ${#batch[@]} image(s) via yt-dlp"
         fi
 

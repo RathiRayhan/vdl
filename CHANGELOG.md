@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Forwarded yt-dlp options now keep their values adjacent.  Options such as
   `--download-archive` no longer consume the following flag as their argument.
+- aria2c now runs with `-Z`, so multiple direct-file or embedded-image URLs
+  each download correctly.  Without it, aria2c treats several URLs as
+  mirrors of one file and silently downloads only the first.
 - `--max-speed` and `--limit-speed` now map to the correct backend options:
   aria2c's overall and per-download limits, and yt-dlp's `--limit-rate`.
   Rates are converted to bytes, so values like `1.5M` and `1G` work.

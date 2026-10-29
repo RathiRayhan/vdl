@@ -167,7 +167,7 @@ if arg_has 'height<=720'; then ok; else bad "720p should map to 720"; fi
 
 # --- direct file via aria2c ------------------------------------------------
 if run -n 'https://example.com/file.iso' \
-    && called aria2c && arg_is -x && arg_is 16; then
+    && called aria2c && arg_is -x && arg_is 16 && arg_is -Z; then
     ok
 else
     bad "direct .iso should use aria2c"
@@ -306,7 +306,7 @@ if arg_is 'https://cdn.example.com/album/pic1.jpg' \
     && ! arg_has 'favicon' && ! arg_has 'logo' \
     && ! arg_has 'avatar' && ! arg_has 'grid1' \
     && ! arg_has 'video1' && ! arg_has 'side' \
-    && called aria2c; then
+    && arg_is '-Z' && called aria2c; then
     ok
 else
     bad "generic pages should queue album images but skip favicons/logos/covers/sidebar"
