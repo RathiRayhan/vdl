@@ -44,9 +44,9 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
     if [[ " $* " == *" -I 1 "* ]]; then
         # vdl's embedded-image probe: answer with the page's extractor name.
         if [[ ${FAKE_GENERIC_PAGE:-} == yes ]]; then
-            printf 'generic\n'
+            printf 'generic|\n'
         else
-            printf 'youtube\n'
+            printf 'youtube|\n'
         fi
     else
         # playlist URL listing used to scope embedded images
@@ -80,7 +80,7 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
     done
 fi
 if [[ ${0##*/} == curl ]]; then
-    printf '<html><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img data-rotate-src="https://cdn.example.com/thumbs/grid1.jpg"><img src="https://cdn.example.com/avatar/36x36/u1.jpeg"><img src="data:image/png;base64,AAAA"><img src="https://cdn.example.com/album/pic1.jpg?v=123"><img data-src="//cdn.example.com/album/pic2.png?v=9"><img src="https://cdn.example.com/album/video1.jpg"><img src="https://cdn.example.com/other/thumb/side.jpg"></html>\n'
+    printf '<html><title>Test Album</title><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img data-rotate-src="https://cdn.example.com/thumbs/grid1.jpg"><img src="https://cdn.example.com/avatar/36x36/u1.jpeg"><img src="data:image/png;base64,AAAA"><img src="https://cdn.example.com/album/pic1.jpg?v=123"><img data-src="//cdn.example.com/album/pic2.png?v=9"><img src="https://cdn.example.com/album/video1.jpg"><img src="https://cdn.example.com/other/thumb/side.jpg"></html>\n'
     exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
@@ -306,7 +306,8 @@ if arg_is 'https://cdn.example.com/album/pic1.jpg' \
     && ! arg_has 'favicon' && ! arg_has 'logo' \
     && ! arg_has 'avatar' && ! arg_has 'grid1' \
     && ! arg_has 'video1' && ! arg_has 'side' \
-    && arg_is '-Z' && called aria2c; then
+    && arg_is '-Z' && arg_is "$VDL_SAVE_DIR/Test Album" \
+    && called aria2c; then
     ok
 else
     bad "generic pages should queue album images but skip favicons/logos/covers/sidebar"

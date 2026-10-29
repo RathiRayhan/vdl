@@ -21,13 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deleted.  Opt-in; off by default.
 - Pages without a dedicated yt-dlp extractor (`generic`/`html5`) are scanned
   for embedded images (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`), which are
-  downloaded with aria2c using a browser user-agent and the album page as
+  download with aria2c using a browser user-agent and the album page as
   referer.  The scan is scoped to the album via the playlist's media URLs:
   same-directory images are kept, video covers and sidebar thumbnails are
   skipped, and `/thumb/` previews upgrade to the full-size image (probing a
-  `.jpg` sibling for `.webp` previews).  Photo-only albums no longer fail
-  with `Unsupported URL`.  Known-site extractors and `--dry-run` are
-  untouched.
+  `.jpg` sibling for `.webp` previews).  Images are saved into the same
+  album-named folder yt-dlp uses for the videos.  Photo-only albums no
+  longer fail with `Unsupported URL`.  Known-site extractors and `--dry-run`
+  are untouched.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)

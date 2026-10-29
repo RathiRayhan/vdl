@@ -349,10 +349,12 @@ playlist (video covers) are skipped. Favicons, logos, avatars, UI icons,
 and sidebar/other-album thumbnails are excluded. `/thumb/` previews are
 upgraded to the full-size image (a same-named `.jpg` sibling is probed when
 the preview is `.webp`), and image downloads use a browser user-agent with
-the album page as referer, since some CDNs reject plain clients. A page that
-contains images but no video formats is treated as an image-only album.
-Known-site extractors (YouTube, ...) are not scanned, and `--dry-run` never
-touches the network.
+the album page as referer, since some CDNs reject plain clients. Images are
+saved into the same album-named folder that yt-dlp uses for the videos
+(derived from the playlist/page title and sanitized the same way). A page
+that contains images but no video formats is treated as an image-only
+album. Known-site extractors (YouTube, ...) are not scanned, and `--dry-run`
+never touches the network.
 
 A page that contains images but no video formats is treated as an image-only
 album, so photo posts download cleanly instead of failing with

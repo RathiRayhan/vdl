@@ -376,6 +376,26 @@ url_filename() {
     printf '%s\n' "$name"
 }
 
+# Sanitize an album/page title the same way yt-dlp does for its playlist
+# folders (invalid characters become their full-width lookalikes), so
+# embedded images land in the same folder as the page's videos.
+sanitize_title() {
+    local t=$1
+    t=${t//\//⧸}
+    t=${t//\\/⧹}
+    t=${t//:/：}
+    t=${t//\?/？}
+    t=${t//\*/＊}
+    t=${t//\"/＂}
+    t=${t//</＜}
+    t=${t//>/＞}
+    t=${t//|/丨}
+    while [[ $t == *[[:space:].] ]]; do
+        t=${t%[[:space:].]}
+    done
+    printf '%s\n' "$t"
+}
+
 # Read the vdl-specific config file ($XDG_CONFIG_HOME/vdl/config or
 # ~/.config/vdl/config).  It is a simple KEY=VALUE file; lines starting with #
 # are comments.  Environment variables and CLI flags take precedence, so this
@@ -823,6 +843,7 @@ declare -a direct_pending=()
 # images but no video formats is treated as an image-only album.
 declare -a img_urls=()
 declare -a img_refs=()
+declare -a img_dirs=()
 if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
     have curl || note "curl not installed: skipping embedded image scan"
     if have curl; then
@@ -834,10 +855,14 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
             esac
 
             probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
-                --print '%(extractor)s' -- "$u" 2>&1)
+                --print '%(extractor)s|%(playlist_title)s' -- "$u" 2>&1)
             probe_rc=$?
             extractor=${probe_out##*$'\n'}
             extractor=${extractor%%|*}
+            album_title=${probe_out##*$'\n'}
+            album_title=${album_title#*|}
+            [[ $probe_rc == 0 ]] || album_title=''
+            [[ $album_title == NA ]] && album_title=''
             images_only=0
             case $probe_out in
                 *"Unsupported URL"*|*"No video formats found"*)
@@ -872,6 +897,21 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
             [[ -n $ua ]] && curl_args+=( -A "$ua" )
             [[ -n $referer ]] && curl_args+=( -e "$referer" )
             [[ -n $proxy ]] && curl_args+=( -x "$proxy" )
+
+            page=$(curl "${curl_args[@]}" -- "$u") || page=''
+
+            # Fall back to the page <title> when yt-dlp has no playlist
+            # title, then sanitize it so the image folder matches the one
+            # yt-dlp creates for the videos.
+            if [[ -z $album_title ]]; then
+                album_title=$(printf '%s\n' "$page" | grep -oiE '<title[^>]*>[^<]+' \
+                    | head -1 | sed -E 's/^<title[^>]*>//')
+            fi
+            img_dir=$save_dir
+            if [[ -n $album_title ]]; then
+                album_title=$(sanitize_title "$album_title")
+                [[ -n $album_title ]] && img_dir=$save_dir/$album_title
+            fi
 
             found=0
             while IFS= read -r img; do
@@ -939,9 +979,10 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 urls+=("$img")
                 img_urls+=("$img")
                 img_refs+=("$u")
+                img_dirs+=("$img_dir")
                 found=1
                 note "Embedded image: $img"
-            done < <(curl "${curl_args[@]}" -- "$u" \
+            done < <(printf '%s\n' "$page" \
                 | sed -E 's/data-rotate-src="[^"]*"//g' \
                 | sed -E "s/data-rotate-src='[^']*'//g" \
                 | grep -oiE "<img[^>]*(src|data-src)=[\"'][^\"']+\.(jpe?g|png|webp|gif)(\?[^\"']*)?[\"']" \
@@ -1216,6 +1257,12 @@ if (( ${#img_urls[@]} )); then
         [[ -n ${img_ref_done[$ref]:-} ]] && continue
         img_ref_done[$ref]=1
 
+        dir=${img_dirs[$i]}
+        if [[ $dir != "$save_dir" ]]; then
+            mkdir -p "$dir" || continue
+            (( quiet )) || printf '  %s→ %s%s\n' "$C_DIM" "${dir#"$save_dir"/}" "$C_OFF"
+        fi
+
         declare -a batch=()
         for j in "${!img_urls[@]}"; do
             [[ ${img_refs[$j]} == "$ref" ]] && batch+=("${img_urls[$j]}")
@@ -1228,7 +1275,7 @@ if (( ${#img_urls[@]} )); then
                 -x 4 -s 4 -k 1M
                 --continue=true
                 --file-allocation=none
-                -d "$save_dir"
+                -d "$dir"
                 "--referer=$ref"
                 "--user-agent=${ua:-$img_ua}"
             )
@@ -1250,7 +1297,7 @@ if (( ${#img_urls[@]} )); then
             declare -a retry_batch=()
             for u in "${batch[@]}"; do
                 if name=$(url_filename "$u"); then
-                    dest=$save_dir/$name
+                    dest=$dir/$name
                     rm -f -- "${dest}.aria2"
                     [[ -e $dest ]] && continue
                 fi
@@ -1277,7 +1324,7 @@ if (( ${#img_urls[@]} )); then
         fi
 
         declare -a yt_img=( "${yt_common[@]}" --downloader "http,https:native"
-            -P "home:$save_dir" -P "temp:$tmp_dir"
+            -P "home:$dir" -P "temp:$tmp_dir"
             --referer "$ref" --user-agent "${ua:-$img_ua}" )
         for u in "${batch[@]}"; do
             if name=$(url_filename "$u"); then
