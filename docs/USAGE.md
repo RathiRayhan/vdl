@@ -346,10 +346,13 @@ full-size image next to them.
 The scan is scoped to the album: images must live in the same directory tree
 as the page's videos, and thumbnails whose name matches a video in the
 playlist (video covers) are skipped. Favicons, logos, avatars, UI icons,
-and sidebar/other-album thumbnails are excluded. A page that contains images
-but no video formats is treated as an image-only album. Known-site
-extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
-network.
+and sidebar/other-album thumbnails are excluded. `/thumb/` previews are
+upgraded to the full-size image (a same-named `.jpg` sibling is probed when
+the preview is `.webp`), and image downloads use a browser user-agent with
+the album page as referer, since some CDNs reject plain clients. A page that
+contains images but no video formats is treated as an image-only album.
+Known-site extractors (YouTube, ...) are not scanned, and `--dry-run` never
+touches the network.
 
 A page that contains images but no video formats is treated as an image-only
 album, so photo posts download cleanly instead of failing with

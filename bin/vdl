@@ -25,6 +25,10 @@ else
     C_RED='' C_GRN='' C_YEL='' C_CYN='' C_DIM='' C_OFF=''
 fi
 
+# Browser-like UA used for embedded image downloads (some CDNs block the
+# default curl/aria2 agents and require a page referer).
+img_ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
 warn() { printf '%s[!] %s%s\n' "$C_YEL" "$*" "$C_OFF" >&2; }
 err()  { printf '%s[!] %s%s\n' "$C_RED" "$*" "$C_OFF" >&2; }
 note() { printf '%s[::] %s%s\n' "$C_DIM" "$*" "$C_OFF" >&2; }
@@ -817,6 +821,8 @@ declare -a direct_pending=()
 # download the images as direct files.  Known-site extractors (youtube, ...)
 # are left alone, and --dry-run never touches the network.  A page with
 # images but no video formats is treated as an image-only album.
+declare -a img_urls=()
+declare -a img_refs=()
 if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
     have curl || note "curl not installed: skipping embedded image scan"
     if have curl; then
@@ -891,14 +897,12 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 esac
                 img=${img%%[[:space:]]*}
 
-                # A /thumb/ path is usually the preview of the full image
-                # next to it.
-                [[ ${img,,} == */thumb/* ]] && img=${img//\/thumb\//\/}
-
                 # Scope to this album and skip video covers when the page has
-                # a media playlist.
+                # a media playlist.  /thumb/ segments are ignored for the
+                # comparison so previews and full images share a directory.
                 if [[ $media_names != $'\n' ]]; then
                     ipath=${img#*://*/}
+                    [[ ${ipath,,} == */thumb/* ]] && ipath=${ipath//\/thumb\//\/}
                     idir=${ipath%/*}
                     [[ $idir == "$ipath" ]] && idir=''
                     [[ $media_dirs == *$'\n'"$idir"$'\n'* ]] || continue
@@ -907,8 +911,25 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                     [[ $media_names == *$'\n'"$ibase"$'\n'* ]] && continue
                 fi
 
+                # A /thumb/ path is a preview: try the full-size image next to
+                # it (same name, possibly .jpg for a .webp thumb).  A quick
+                # header check with a browser UA and the page referer decides.
+                if [[ ${img,,} == */thumb/* ]]; then
+                    base=${img//\/thumb\//\/}
+                    cand=''
+                    for c in "$base" "${base%.webp}.jpg"; do
+                        status=$(curl -sIL -A "${ua:-$img_ua}" -e "$u" \
+                            --max-time 15 -o /dev/null -w '%{http_code}' "$c")
+                        if [[ $status == 200 ]]; then
+                            cand=$c
+                            break
+                        fi
+                    done
+                    [[ -n $cand ]] && img=$cand
+                fi
+
                 saw=0
-                for q in "${urls[@]}" "${direct[@]}" "${media[@]}"; do
+                for q in "${urls[@]}" "${direct[@]}" "${media[@]}" "${img_urls[@]}"; do
                     if [[ $q == "$img" ]]; then
                         saw=1
                         break
@@ -916,7 +937,8 @@ if (( ! dry_run )) && (( ${#media[@]} )) && have yt-dlp; then
                 done
                 (( saw )) && continue
                 urls+=("$img")
-                direct+=("$img")
+                img_urls+=("$img")
+                img_refs+=("$u")
                 found=1
                 note "Embedded image: $img"
             done < <(curl "${curl_args[@]}" -- "$u" \
@@ -1090,6 +1112,7 @@ fi
 
 rc=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+img_ok=0 img_fail=0
 aria_attempted=0
 dedupe_mark=$(date +%s)
 
@@ -1172,6 +1195,86 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
             rc=$aria_rc
         fi
     fi
+fi
+
+# ---------------------------------------------------------------------------
+# 7b. Embedded images scraped from generic/html5 pages
+# ---------------------------------------------------------------------------
+if (( ${#img_urls[@]} )); then
+    ui_section "Embedded images"
+    for u in "${img_urls[@]}"; do
+        ui_item "$(ui_name "$u")"
+    done
+
+    use_aria=0
+    have aria2c && (( ! no_aria )) && use_aria=1
+
+    declare -A img_ref_done=()
+    for i in "${!img_urls[@]}"; do
+        ref=${img_refs[$i]}
+        [[ -n ${img_ref_done[$ref]:-} ]] && continue
+        img_ref_done[$ref]=1
+
+        declare -a batch=()
+        for j in "${!img_urls[@]}"; do
+            [[ ${img_refs[$j]} == "$ref" ]] && batch+=("${img_urls[$j]}")
+        done
+
+        img_rc=0
+        if (( use_aria )); then
+            declare -a img_aria=(
+                -x 4 -s 4 -k 1M
+                --continue=true
+                --file-allocation=none
+                -d "$save_dir"
+                "--referer=$ref"
+                "--user-agent=${ua:-$img_ua}"
+            )
+            (( quiet )) && img_aria+=( --quiet=true )
+            aria2c "${img_aria[@]}" "${batch[@]}" || img_rc=$?
+        fi
+
+        if (( img_rc == 0 )) && (( use_aria )); then
+            for u in "${batch[@]}"; do
+                ui_result 0 "$(ui_name "$u")"
+            done
+            img_ok=$((img_ok + ${#batch[@]}))
+            continue
+        fi
+
+        if (( use_aria )); then
+            warn "aria2c failed (exit $img_rc) — retrying ${#batch[@]} image(s) via yt-dlp"
+        fi
+
+        if ! have yt-dlp; then
+            err "yt-dlp is required to download the embedded images"
+            img_fail=$((img_fail + ${#batch[@]}))
+            for u in "${batch[@]}"; do
+                ui_result 1 "$(ui_name "$u")"
+            done
+            continue
+        fi
+
+        declare -a yt_img=( "${yt_common[@]}" --downloader "http,https:native"
+            -P "home:$save_dir" -P "temp:$tmp_dir"
+            --referer "$ref" --user-agent "${ua:-$img_ua}" )
+        for u in "${batch[@]}"; do
+            if name=$(url_filename "$u"); then
+                name=${name//%/%%}
+            else
+                name='%(title)s.%(ext)s'
+            fi
+            u_rc=0
+            yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+            (( u_rc )) && rc=$u_rc
+            if (( u_rc )); then
+                img_fail=$((img_fail + 1))
+            else
+                img_ok=$((img_ok + 1))
+            fi
+            ui_result $u_rc "$(ui_name "$u")"
+        done
+    done
 fi
 
 # ---------------------------------------------------------------------------
@@ -1303,13 +1406,16 @@ fi
 if (( ${#media[@]} )); then
     ui_row 'Media' "$media_ok ok, $media_fail failed"
 fi
+if (( ${#img_urls[@]} )); then
+    ui_row 'Images' "$img_ok ok, $img_fail failed"
+fi
 if (( SECONDS >= 60 )); then
     ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
 else
     ui_row 'Time' "${SECONDS}s"
 fi
 ui_row 'Save dir' "$display_dir"
-if (( rc == 0 && direct_fail == 0 && media_fail == 0 )); then
+if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
     ui_result 0 "all downloads finished"
 else
     ui_result 1 "some downloads failed"
