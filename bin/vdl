@@ -25,10 +25,171 @@ else
     C_RED='' C_GRN='' C_YEL='' C_CYN='' C_DIM='' C_OFF=''
 fi
 
+# Browser-like UA used for embedded image downloads (some CDNs block the
+# default curl/aria2 agents and require a page referer).
+img_ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
 warn() { printf '%s[!] %s%s\n' "$C_YEL" "$*" "$C_OFF" >&2; }
 err()  { printf '%s[!] %s%s\n' "$C_RED" "$*" "$C_OFF" >&2; }
 note() { printf '%s[::] %s%s\n' "$C_DIM" "$*" "$C_OFF" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# --- UI helpers -------------------------------------------------------------
+# All helpers print to stdout and are silenced by --quiet.
+
+# Section header, e.g. "--- Direct downloads via aria2c ---"
+ui_section() {
+    (( quiet )) && return 0
+    printf '\n%s--- %s ---%s\n' "$C_CYN" "$*" "$C_OFF"
+}
+
+# Aligned label/value row inside the banner and summary.
+ui_row() {
+    (( quiet )) && return 0
+    printf '  %s%-9s%s %s\n' "$C_GRN" "$1:" "$C_OFF" "$2"
+}
+
+# A URL/about-to-start line, e.g. "  • file.iso"
+ui_item() {
+    (( quiet )) && return 0
+    printf '  %s•%s %s\n' "$C_DIM" "$C_OFF" "$1"
+}
+
+# A per-URL or per-phase result, e.g. "  [ok] file.iso"
+ui_result() {
+    local code=$1 label=$2
+    (( quiet )) && return 0
+    if (( code == 0 )); then
+        printf '  %s[ok]%s   %s\n' "$C_GRN" "$C_OFF" "$label"
+    else
+        printf '  %s[fail]%s %s\n' "$C_RED" "$C_OFF" "$label"
+    fi
+}
+
+# Human-friendly display name for a URL (basename when possible).
+ui_name() {
+    local name
+    case $1 in
+        magnet:*) printf '%s\n' "$1" ;;
+        *)
+            if name=$(url_filename "$1"); then
+                printf '%s\n' "$name"
+            else
+                printf '%s\n' "$1"
+            fi
+            ;;
+    esac
+}
+
+# Render yt-dlp's \r-separated progress stream as a fixed-width bar plus the
+# speed/ETA text, all on one updating line.  Non-progress output passes
+# through untouched, with the leading [tag]/WARNING:/ERROR: prefix colored to
+# match vdl's palette (yt-dlp skips its own colors when piped).
+yt_bar() {
+    awk -v grn="$C_GRN" -v yel="$C_YEL" -v red="$C_RED" -v off="$C_OFF" '
+        BEGIN { RS = "\r"; ORS = ""; w = 20; newline = 1; pending = 0 }
+
+        function colorize(seg) {
+            if (seg ~ /^\[[A-Za-z0-9_.-]+\]/) {
+                match(seg, /^\[[A-Za-z0-9_.-]+\]/)
+                return grn substr(seg, 1, RLENGTH) off substr(seg, RLENGTH + 1)
+            }
+            if (seg ~ /^WARNING:/) {
+                sub(/^WARNING:/, "", seg)
+                return yel "WARNING:" off seg
+            }
+            if (seg ~ /^ERROR:/) {
+                sub(/^ERROR:/, "", seg)
+                return red "ERROR:" off seg
+            }
+            return seg
+        }
+
+        /^ *[0-9][0-9.]*% \|/ {
+            p = $0
+            sub(/^ */, "", p)
+            sub(/% .*/, "", p)
+            filled = int(p * w / 100 + 0.5)
+            if (filled < 0) filled = 0
+            if (filled > w) filled = w
+            hashes = dashes = ""
+            for (i = 1; i <= filled; i++) hashes = hashes "#"
+            for (i = filled + 1; i <= w; i++) dashes = dashes "-"
+            rest = $0
+            sub(/^ *[0-9][0-9.]*% \| /, "", rest)
+            sub(/^\.\//, "  ", rest)
+            n = split(rest, pl, "\n")
+            printf "\r%s[%s%s]%s %5s%% %s", grn, hashes, dashes, off, p, pl[1]
+            for (i = 2; i <= n; i++) printf "\n%s", colorize(pl[i])
+            newline = ($0 ~ /\n$/)
+            pending = !newline
+            next
+        }
+        {
+            if (pending && $0 !~ /^\n/) printf "\n"
+            n = split($0, parts, "\n")
+            out = ""
+            for (i = 1; i <= n; i++) {
+                out = out colorize(parts[i])
+                if (i < n) out = out "\n"
+            }
+            printf "%s", out
+            newline = ($0 ~ /\n$/)
+            pending = !newline
+        }
+        END { if (pending) printf "\n" }
+    '
+}
+
+# With --dedupe: remove files created during this run whose content is
+# identical to another file from the same run.  Only same-size files are
+# hashed, and the oldest copy is always kept, so a file that already existed
+# before this run can never be removed.
+dedupe_saved() {
+    (( dedupe )) || return 0
+
+    local f size h dt keep keep_t
+    local -A size_groups=()
+    local -a files
+    local -A hash_groups
+
+    while IFS= read -r -d '' f; do
+        case ${f##*/} in
+            *.aria2|*.part|*.ytdl|*.temp) continue ;;
+        esac
+        size=$(stat -c %s -- "$f" 2>/dev/null) || continue
+        size_groups[$size]+=$f$'\n'
+    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
+        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+
+    for size in "${!size_groups[@]}"; do
+        mapfile -t files <<< "${size_groups[$size]%$'\n'}"
+        (( ${#files[@]} > 1 )) || continue
+        hash_groups=()
+        for f in "${files[@]}"; do
+            h=$(sha256sum -- "$f" 2>/dev/null | awk '{print $1}') || continue
+            [[ -n $h ]] && hash_groups[$h]+=$f$'\n'
+        done
+        for h in "${!hash_groups[@]}"; do
+            mapfile -t files <<< "${hash_groups[$h]%$'\n'}"
+            (( ${#files[@]} > 1 )) || continue
+            keep=${files[0]}
+            keep_t=$(stat -c %Y -- "$keep" 2>/dev/null || echo 0)
+            for f in "${files[@]:1}"; do
+                dt=$(stat -c %Y -- "$f" 2>/dev/null || echo 0)
+                if (( dt < keep_t )); then
+                    rm -f -- "$keep"
+                    note "Removed duplicate: ${keep#"$save_dir"/} (same content as ${f#"$save_dir"/})"
+                    keep=$f
+                    keep_t=$dt
+                else
+                    rm -f -- "$f"
+                    note "Removed duplicate: ${f#"$save_dir"/} (same content as ${keep#"$save_dir"/})"
+                fi
+            done
+        done
+    done
+}
 
 usage() {
     cat <<'EOF'
@@ -50,7 +211,9 @@ Options:
       --no-impersonate     Disable browser TLS impersonation
       --download-dir DIR   Override save directory for this run
       --dry-run            Show what would be done, then exit
-      --quiet              Suppress banner and progress output
+      --dedupe             Remove duplicate files downloaded in this run
+      --images             Also download images embedded in album pages
+      --quiet              Suppress banner, status and progress output
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
       --limit-speed RATE   Per-download speed limit
@@ -70,6 +233,7 @@ Environment:
   VDL_QUALITY         Default max height, overridden by -q
   VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (default: 7)
   VDL_IMPERSONATE     auto | off | <target> (default: auto = chrome)
+  VDL_IMAGES          1 | yes to always scan album pages for images
   VDL_CONFIG          Extra yt-dlp config file
                       (default: ~/.config/vdl/yt-dlp.conf)
   VDL_CONFIG_DIR      Directory for vdl's own config file
@@ -89,6 +253,7 @@ Examples:
   vdl --no-aria -F "https://example.com/video"
   vdl --dry-run "https://example.com/file.iso"
   vdl --download-dir ~/tmp "https://example.com/file.zip"
+  vdl --images "https://example.com/album/abc123"
   vdl magnet:?xt=urn:btih:abc123
 EOF
 }
@@ -214,6 +379,26 @@ url_filename() {
     printf '%s\n' "$name"
 }
 
+# Sanitize an album/page title the same way yt-dlp does for its playlist
+# folders (invalid characters become their full-width lookalikes), so
+# embedded images land in the same folder as the page's videos.
+sanitize_title() {
+    local t=$1
+    t=${t//\//⧸}
+    t=${t//\\/⧹}
+    t=${t//:/：}
+    t=${t//\?/？}
+    t=${t//\*/＊}
+    t=${t//\"/＂}
+    t=${t//</＜}
+    t=${t//>/＞}
+    t=${t//|/丨}
+    while [[ $t == *[[:space:].] ]]; do
+        t=${t%[[:space:].]}
+    done
+    printf '%s\n' "$t"
+}
+
 # Read the vdl-specific config file ($XDG_CONFIG_HOME/vdl/config or
 # ~/.config/vdl/config).  It is a simple KEY=VALUE file; lines starting with #
 # are comments.  Environment variables and CLI flags take precedence, so this
@@ -262,6 +447,8 @@ proxy=''
 download_dir=''
 quiet=0
 dry_run=0
+dedupe=0
+images=0
 aria_opts=''
 max_speed=''
 limit_speed=''
@@ -390,6 +577,14 @@ while (( $# > 0 )); do
             ;;
         --dry-run)
             dry_run=1
+            prev_unknown_flag=0
+            ;;
+        --dedupe)
+            dedupe=1
+            prev_unknown_flag=0
+            ;;
+        --images)
+            images=1
             prev_unknown_flag=0
             ;;
         --quiet)
@@ -616,6 +811,18 @@ cleanup_tmp() {
 }
 trap cleanup_tmp EXIT
 
+# Ctrl+C: finished items have already been moved to their final folders;
+# only the download in flight stays in the temp dir.  Tell the user how to
+# pick up where they left off instead of dying silently.
+# shellcheck disable=SC2317  # signal handler, invoked via trap
+on_interrupt() {
+    trap - INT
+    printf '\n'
+    warn "Interrupted — completed downloads were moved to their folders; run the same command again to resume the rest."
+    exit 130
+}
+trap on_interrupt INT
+
 if (( audio )); then
     out_dir=$save_dir/audio
 else
@@ -637,7 +844,7 @@ for u in "${urls[@]}"; do
     path=${path%%#*}
     if [[ $path == magnet:* ]] || [[ $path =~ \.torrent$ ]]; then
         direct+=("$u")
-    elif [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|gz|xz|zst|bz2|pdf|epub|apk|bin|img)$ ]]; then
+    elif [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|tgz|tbz2|tbz|txz|tlz|gz|xz|zst|bz2|pdf|epub|apk|bin|img|jpe?g|png|webp|gif)$ ]]; then
         direct+=("$u")
     elif (( ! audio )) && [[ $path =~ \.(mp4|mkv|webm|avi|mov|flv)$ ]]; then
         direct+=("$u")
@@ -648,6 +855,184 @@ done
 
 direct_via_ytdlp=0
 declare -a direct_pending=()
+
+# Pages without a dedicated yt-dlp extractor (generic/html5) often embed
+# images alongside videos; yt-dlp ignores <img> tags, so scan such pages and
+# download the images as direct files.  Known-site extractors (youtube, ...)
+# are left alone, and --dry-run never touches the network.  A page with
+# images but no video formats is treated as an image-only album.
+declare -a img_urls=()
+declare -a img_refs=()
+declare -a img_dirs=()
+images_on=0
+(( images )) && images_on=1
+[[ ${VDL_IMAGES:-} == 1 || ${VDL_IMAGES:-} == yes ]] && images_on=1
+if (( ! dry_run )) && (( images_on )) && (( ${#media[@]} )) && have yt-dlp; then
+    have curl || note "curl not installed: skipping embedded image scan"
+    if have curl; then
+        declare -a media_kept=()
+        for u in "${media[@]}"; do
+            case $u in
+                http://*|https://*) ;;
+                *) media_kept+=("$u"); continue ;;
+            esac
+
+            probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+                --print '%(extractor)s|%(playlist_title)s' -- "$u" 2>&1)
+            probe_rc=$?
+            extractor=${probe_out##*$'\n'}
+            extractor=${extractor%%|*}
+            album_title=${probe_out##*$'\n'}
+            album_title=${album_title#*|}
+            [[ $probe_rc == 0 ]] || album_title=''
+            [[ $album_title == NA ]] && album_title=''
+            images_only=0
+            case $probe_out in
+                *"Unsupported URL"*|*"No video formats found"*)
+                    [[ $probe_rc != 0 ]] && images_only=1
+                    ;;
+            esac
+            if [[ $probe_rc == 0 && -n $extractor ]] \
+                && [[ $extractor != generic && $extractor != generic:* && $extractor != html5 ]]; then
+                media_kept+=("$u")
+                continue
+            fi
+
+            # Collect the playlist's media URLs.  Their directory prefixes
+            # scope the page's images to this album, and their basenames
+            # identify video covers that must not be treated as photos.
+            media_names=$'\n'
+            media_dirs=$'\n'
+            while IFS= read -r murl; do
+                murl=${murl%%\?*}
+                [[ $murl == http://* || $murl == https://* ]] || continue
+                mb=${murl##*/}
+                mb=${mb%.*}
+                [[ -n $mb ]] && media_names+=$mb$'\n'
+                mdir=${murl#*://*/}
+                mdir=${mdir%/*}
+                [[ $mdir == "${murl#*://*/}" ]] && mdir=''
+                [[ -n $mdir ]] && media_dirs+=$mdir$'\n'
+            done < <(yt-dlp --ignore-config --quiet --simulate \
+                --print '%(url)s' -- "$u" 2>/dev/null)
+
+            curl_args=( -sL --max-time 30 )
+            [[ -n $ua ]] && curl_args+=( -A "$ua" )
+            [[ -n $referer ]] && curl_args+=( -e "$referer" )
+            [[ -n $proxy ]] && curl_args+=( -x "$proxy" )
+
+            page_file=$(mktemp "${TMPDIR:-/tmp}/vdl-page.XXXXXX") || page_file=''
+            if [[ -n $page_file ]]; then
+                curl "${curl_args[@]}" -o "$page_file" -- "$u" || true
+            fi
+
+            found=0
+
+            # Only treat the response as a page when it looks like HTML.
+            # Binary responses (e.g. a misclassified file) are skipped so
+            # they are never slurped into a shell variable.
+            if [[ -n $page_file ]] && grep -aqiE '<(img|html|body|head|a[ >]|video|title)' "$page_file"; then
+            # Fall back to the page <title> when yt-dlp has no playlist
+            # title, then sanitize it so the image folder matches the one
+            # yt-dlp creates for the videos.
+            if [[ -z $album_title ]]; then
+                album_title=$(grep -oiE '<title[^>]*>[^<]+' "$page_file" \
+                    | head -1 | sed -E 's/^<title[^>]*>//')
+            fi
+            img_dir=$save_dir
+            if [[ -n $album_title ]]; then
+                album_title=$(sanitize_title "$album_title")
+                [[ -n $album_title ]] && img_dir=$save_dir/$album_title
+            fi
+
+            while IFS= read -r img; do
+                [[ -n $img ]] || continue
+                img=${img%%\?*}
+                case ${img,,} in
+                    *favicon*|*apple-touch*|*logo*|*/icons/*|*icon-*|*avatar*|*/thumbs/*)
+                        # site chrome or thumbnail, not full content
+                        continue
+                        ;;
+                esac
+                case $img in
+                    //*) img="https:$img" ;;
+                    http://*|https://*) ;;
+                    /*)
+                        scheme_host=${u#*//}
+                        scheme_host=${scheme_host%%/*}
+                        img="https://$scheme_host$img"
+                        ;;
+                    *)
+                        img="${u%/*}/$img"
+                        ;;
+                esac
+                img=${img%%[[:space:]]*}
+
+                # Scope to this album and skip video covers when the page has
+                # a media playlist.  /thumb/ segments are ignored for the
+                # comparison so previews and full images share a directory.
+                if [[ $media_names != $'\n' ]]; then
+                    ipath=${img#*://*/}
+                    [[ ${ipath,,} == */thumb/* ]] && ipath=${ipath//\/thumb\//\/}
+                    idir=${ipath%/*}
+                    [[ $idir == "$ipath" ]] && idir=''
+                    [[ $media_dirs == *$'\n'"$idir"$'\n'* ]] || continue
+                    ibase=${ipath##*/}
+                    ibase=${ibase%.*}
+                    [[ $media_names == *$'\n'"$ibase"$'\n'* ]] && continue
+                fi
+
+                # A /thumb/ path is a preview: try the full-size image next to
+                # it (same name, possibly .jpg for a .webp thumb).  A quick
+                # header check with a browser UA and the page referer decides.
+                if [[ ${img,,} == */thumb/* ]]; then
+                    base=${img//\/thumb\//\/}
+                    cand=''
+                    for c in "$base" "${base%.webp}.jpg"; do
+                        status=$(curl -sIL -A "${ua:-$img_ua}" -e "$u" \
+                            --max-time 15 -o /dev/null -w '%{http_code}' "$c")
+                        if [[ $status == 200 ]]; then
+                            cand=$c
+                            break
+                        fi
+                    done
+                    [[ -n $cand ]] && img=$cand
+                fi
+
+                saw=0
+                for q in "${urls[@]}" "${direct[@]}" "${media[@]}" "${img_urls[@]}"; do
+                    if [[ $q == "$img" ]]; then
+                        saw=1
+                        break
+                    fi
+                done
+                (( saw )) && continue
+                urls+=("$img")
+                img_urls+=("$img")
+                img_refs+=("$u")
+                img_dirs+=("$img_dir")
+                found=1
+                note "Embedded image: $img"
+            done < <(sed -E 's/data-rotate-src="[^"]*"//g' "$page_file" \
+                | sed -E "s/data-rotate-src='[^']*'//g" \
+                | grep -oiE "<img[^>]*(src|data-src)=[\"'][^\"']+\.(jpe?g|png|webp|gif)(\?[^\"']*)?[\"']" \
+                | grep -oE "(src|data-src)=[\"'][^\"']+[\"']" \
+                | sed -E "s/^(src|data-src)=[\"']//; s/[\"']$//" | sed 's/&amp;/\&/g')
+            fi
+            [[ -n $page_file ]] && rm -f -- "$page_file"
+
+            if (( images_only && found )); then
+                # yt-dlp has nothing to download for this page; the images
+                # are the whole album.
+                note "No video formats on page — ${found} embedded image(s) queued"
+            else
+                media_kept+=("$u")
+            fi
+        done
+        media=("${media_kept[@]}")
+    fi
+fi
+
 if (( ${#direct[@]} )); then
     if (( ! have_aria || no_aria )); then
         direct_via_ytdlp=1
@@ -691,7 +1076,10 @@ yt_common+=(
     --no-overwrites
 )
 (( quiet )) && yt_common+=( --quiet )
-(( ! quiet )) && yt_common+=( --progress --console-title )
+(( ! quiet )) && yt_common+=(
+    --progress --console-title
+    --progress-template 'download:%(progress._percent_str)s | %(progress._downloaded_bytes_str)s/%(progress._total_bytes_str)s | %(progress._speed_str)s | ETA %(progress._eta_str)s'
+)
 
 # yt-dlp exposes one per-download rate limit, so when both limits are set use
 # the stricter one.  A zero rate means "unlimited" and is ignored here.
@@ -762,16 +1150,20 @@ if [[ $display_dir == "$HOME"* ]]; then
 fi
 
 if (( ! quiet )); then
-    printf '\n%s== vdl %s%s\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
-    printf '   %sEngine  :%s %s\n' "$C_GRN" "$C_OFF" "$engine"
-    printf '   %sMode    :%s %s\n' "$C_CYN" "$C_OFF" "$mode"
+    printf '\n%s===============================================%s\n' "$C_CYN" "$C_OFF"
+    printf '  %svdl %s%s  —  smart downloader\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
+    printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
+    ui_row 'Engine' "$engine"
+    ui_row 'Mode' "$mode"
+    ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
     if (( ${#batch_files[@]} )); then
-        printf '   %sBatch   :%s %s links loaded\n' "$C_YEL" "$C_OFF" "${#urls[@]}"
+        ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi
     if (( ${#media[@]} )) && [[ $browser != none ]]; then
-        printf '   %sCookies :%s %s\n' "$C_YEL" "$C_OFF" "$browser"
+        ui_row 'Cookies' "$browser"
     fi
-    printf '   %sSave dir:%s %s\n\n' "$C_DIM" "$C_OFF" "$display_dir"
+    ui_row 'Save dir' "$display_dir"
+    printf '%s===============================================%s\n\n' "$C_CYN" "$C_OFF"
 fi
 
 mkdir -p "$save_dir" || exit 1
@@ -792,12 +1184,23 @@ if (( dry_run )); then
 fi
 
 rc=0
+direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+img_ok=0 img_fail=0
+aria_attempted=0
+dedupe_mark=$(date +%s)
 
 # ---------------------------------------------------------------------------
 # 7. Direct downloads via aria2c
 # ---------------------------------------------------------------------------
 if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
+    aria_attempted=1
+    ui_section "Direct downloads via aria2c"
+    for u in "${direct[@]}"; do
+        ui_item "$(ui_name "$u")"
+    done
+
     declare -a aria_args=(
+        -Z
         -x 16 -s 16 -k 1M
         --continue=true
         --file-allocation=none
@@ -821,13 +1224,22 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
 
     aria_rc=0
     aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
-    if (( aria_rc != 0 )); then
+    if (( aria_rc == 0 )); then
+        direct_ok=${#direct[@]}
+        for u in "${direct[@]}"; do
+            ui_result 0 "$(ui_name "$u")"
+        done
+    else
         direct_pending=()
         for u in "${direct[@]}"; do
             # yt-dlp cannot fetch magnet/torrent payloads; report those
             # failures instead of retrying the wrong thing.
             case ${u,,} in
-                magnet:*|*.torrent) continue ;;
+                magnet:*|*.torrent)
+                    direct_fail=$((direct_fail + 1))
+                    ui_result 1 "$(ui_name "$u")"
+                    continue
+                    ;;
             esac
 
             if name=$(url_filename "$u"); then
@@ -840,6 +1252,9 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
                     direct_pending+=("$u")
                 elif [[ ! -f $dest ]]; then
                     direct_pending+=("$u")
+                else
+                    direct_ok=$((direct_ok + 1))
+                    ui_result 0 "$name"
                 fi
             else
                 direct_pending+=("$u")
@@ -857,12 +1272,123 @@ if (( ${#direct[@]} )) && (( ! direct_via_ytdlp )); then
 fi
 
 # ---------------------------------------------------------------------------
+# 7b. Embedded images scraped from generic/html5 pages
+# ---------------------------------------------------------------------------
+if (( ${#img_urls[@]} )); then
+    ui_section "Embedded images"
+    for u in "${img_urls[@]}"; do
+        ui_item "$(ui_name "$u")"
+    done
+
+    use_aria=0
+    have aria2c && (( ! no_aria )) && use_aria=1
+
+    declare -A img_ref_done=()
+    for i in "${!img_urls[@]}"; do
+        ref=${img_refs[$i]}
+        [[ -n ${img_ref_done[$ref]:-} ]] && continue
+        img_ref_done[$ref]=1
+
+        dir=${img_dirs[$i]}
+        if [[ $dir != "$save_dir" ]]; then
+            mkdir -p "$dir" || continue
+            (( quiet )) || printf '  %s→ %s%s\n' "$C_DIM" "${dir#"$save_dir"/}" "$C_OFF"
+        fi
+
+        declare -a batch=()
+        for j in "${!img_urls[@]}"; do
+            [[ ${img_refs[$j]} == "$ref" ]] && batch+=("${img_urls[$j]}")
+        done
+
+        img_rc=0
+        if (( use_aria )); then
+            declare -a img_aria=(
+                -Z
+                -x 4 -s 4 -k 1M
+                --continue=true
+                --file-allocation=none
+                -d "$dir"
+                "--referer=$ref"
+                "--user-agent=${ua:-$img_ua}"
+            )
+            (( quiet )) && img_aria+=( --quiet=true )
+            aria2c "${img_aria[@]}" "${batch[@]}" || img_rc=$?
+        fi
+
+        if (( img_rc == 0 )) && (( use_aria )); then
+            for u in "${batch[@]}"; do
+                ui_result 0 "$(ui_name "$u")"
+            done
+            img_ok=$((img_ok + ${#batch[@]}))
+            continue
+        fi
+
+        if (( use_aria )); then
+            # Only retry the images that are still missing; -Z downloads
+            # sequentially, so some may have completed before the failure.
+            declare -a retry_batch=()
+            for u in "${batch[@]}"; do
+                if name=$(url_filename "$u"); then
+                    dest=$dir/$name
+                    rm -f -- "${dest}.aria2"
+                    [[ -e $dest ]] && continue
+                fi
+                retry_batch+=("$u")
+            done
+            if (( ${#retry_batch[@]} == 0 )); then
+                for u in "${batch[@]}"; do
+                    ui_result 0 "$(ui_name "$u")"
+                done
+                img_ok=$((img_ok + ${#batch[@]}))
+                continue
+            fi
+            batch=("${retry_batch[@]}")
+            warn "aria2c failed (exit $img_rc) — retrying ${#batch[@]} image(s) via yt-dlp"
+        fi
+
+        if ! have yt-dlp; then
+            err "yt-dlp is required to download the embedded images"
+            img_fail=$((img_fail + ${#batch[@]}))
+            for u in "${batch[@]}"; do
+                ui_result 1 "$(ui_name "$u")"
+            done
+            continue
+        fi
+
+        declare -a yt_img=( "${yt_common[@]}" --downloader "http,https:native"
+            -P "home:$dir" -P "temp:$tmp_dir"
+            --referer "$ref" --user-agent "${ua:-$img_ua}" )
+        for u in "${batch[@]}"; do
+            if name=$(url_filename "$u"); then
+                name=${name//%/%%}
+            else
+                name='%(title)s.%(ext)s'
+            fi
+            u_rc=0
+            yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+            (( u_rc )) && rc=$u_rc
+            if (( u_rc )); then
+                img_fail=$((img_fail + 1))
+            else
+                img_ok=$((img_ok + 1))
+            fi
+            ui_result $u_rc "$(ui_name "$u")"
+        done
+    done
+fi
+
+# ---------------------------------------------------------------------------
 # 8. Direct downloads via yt-dlp (no aria2c, --no-aria, or aria2c fallback)
 # ---------------------------------------------------------------------------
 if (( ${#direct_pending[@]} )); then
+    ui_section "Direct downloads via yt-dlp"
     if ! have yt-dlp; then
         err "yt-dlp is required to retry the failed direct download(s)"
         rc=1
+        direct_fail=$((direct_fail + ${#direct_pending[@]}))
+        for u in "${direct_pending[@]}"; do
+            ui_result 1 "$(ui_name "$u")"
+        done
     else
         declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
         yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
@@ -882,7 +1408,16 @@ if (( ${#direct_pending[@]} )); then
             else
                 name='%(title)s.%(ext)s'
             fi
-            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" || rc=$?
+            (( aria_attempted )) || ui_item "$(ui_name "$u")"
+            u_rc=0
+            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+            (( u_rc )) && rc=$u_rc
+            if (( u_rc )); then
+                direct_fail=$((direct_fail + 1))
+            else
+                direct_ok=$((direct_ok + 1))
+            fi
+            ui_result $u_rc "$(ui_name "$u")"
         done
     fi
 fi
@@ -891,6 +1426,11 @@ fi
 # 9. Media / page downloads via yt-dlp
 # ---------------------------------------------------------------------------
 if (( ${#media[@]} )); then
+    ui_section "Media / page downloads via yt-dlp"
+    for u in "${media[@]}"; do
+        ui_item "$u"
+    done
+
     declare -a yt_media=( "${yt_common[@]}" )
 
     if (( have_aria && ! no_aria )); then
@@ -938,12 +1478,47 @@ if (( ${#media[@]} )); then
         )
     fi
 
-    yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" || rc=$?
+    media_rc=0
+    yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
+    (( media_rc )) && rc=$media_rc
+    if (( media_rc == 0 )); then
+        media_ok=${#media[@]}
+    else
+        media_fail=${#media[@]}
+    fi
+    for u in "${media[@]}"; do
+        ui_result $media_rc "$u"
+    done
 fi
 
 # ---------------------------------------------------------------------------
 # 10. Tidy up the temp folder (also handled by EXIT trap above)
 # ---------------------------------------------------------------------------
 cleanup_tmp
+
+dedupe_saved
+
+ui_section "Summary"
+ui_row 'Total' "${#urls[@]}"
+if (( ${#direct[@]} )); then
+    ui_row 'Direct' "$direct_ok ok, $direct_fail failed"
+fi
+if (( ${#media[@]} )); then
+    ui_row 'Media' "$media_ok ok, $media_fail failed"
+fi
+if (( ${#img_urls[@]} )); then
+    ui_row 'Images' "$img_ok ok, $img_fail failed"
+fi
+if (( SECONDS >= 60 )); then
+    ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
+else
+    ui_row 'Time' "${SECONDS}s"
+fi
+ui_row 'Save dir' "$display_dir"
+if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
+    ui_result 0 "all downloads finished"
+else
+    ui_result 1 "some downloads failed"
+fi
 
 exit "$rc"

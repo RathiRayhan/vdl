@@ -80,8 +80,16 @@ Per-download speed limit.
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
 .TP
+.B \-\-dedupe
+After downloading, remove files from this run whose content is identical to
+another file downloaded in the same run (the oldest copy is kept).
+.TP
+.B \-\-images
+Also download images embedded in album pages (opt-in; see the user guide for
+which pages are scanned).
+.TP
 .B \-\-quiet
-Suppress the banner and yt-dlp progress output.
+Suppress the banner, status lines, summary, and downloader progress output.
 .TP
 .BR \-h ", " \-\-help
 Show help and exit.

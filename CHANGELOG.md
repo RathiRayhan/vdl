@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Redesigned terminal output: a restyled banner, section headers per download
+  phase, per-URL status lines with `[ok]`/`[fail]` markers, and an end-of-run
+  summary with per-engine results, elapsed time, and save directory.
+  `--quiet` still suppresses all of it.
+- Ctrl+C now prints a hint that completed downloads were moved to their
+  folders and that re-running the same command resumes the rest (exit 130).
+- yt-dlp downloads now render a live progress bar
+  (`[#########-----------] 43.3% 149KiB/s | ETA 00:01`) that updates in place;
+  aria2c keeps its native per-file progress line.
+- `--dedupe` flag: after the run, removes files whose content is identical to
+  another file downloaded in the same run.  Only same-size files are hashed
+  and the oldest copy is always kept, so pre-existing files are never
+  deleted.  Opt-in; off by default.
+- Embedded-image downloading is now opt-in via `--images` (or `VDL_IMAGES=1`)
+  so plain links stay fast.  When enabled, pages without a dedicated yt-dlp
+  extractor (`generic`/`html5`) are scanned for embedded images
+  (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`), which are downloaded with
+  aria2c using a browser user-agent and the album page as referer.  The scan is scoped to the album via the playlist's media URLs:
+  same-directory images are kept, video covers and sidebar thumbnails are
+  skipped, and `/thumb/` previews upgrade to the full-size image (probing a
+  `.jpg` sibling for `.webp` previews).  Images are saved into the same
+  album-named folder yt-dlp uses for the videos.  Photo-only albums no
+  longer fail with `Unsupported URL`.  Known-site extractors and `--dry-run`
+  are untouched.
+- `docs/USAGE.md`: a user guide covering installation, setup, every feature
+  with examples, and uninstallation.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)
   without invoking yt-dlp or aria2c.
 - `--download-dir DIR` flag: override `VDL_SAVE_DIR` for a single invocation.
@@ -37,6 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Forwarded yt-dlp options now keep their values adjacent.  Options such as
   `--download-archive` no longer consume the following flag as their argument.
+- aria2c now runs with `-Z`, so multiple direct-file or embedded-image URLs
+  each download correctly.  Without it, aria2c treats several URLs as
+  mirrors of one file and silently downloads only the first.
 - `--max-speed` and `--limit-speed` now map to the correct backend options:
   aria2c's overall and per-download limits, and yt-dlp's `--limit-rate`.
   Rates are converted to bytes, so values like `1.5M` and `1G` work.

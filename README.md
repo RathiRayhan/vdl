@@ -48,12 +48,20 @@ speed limits, and unknown yt-dlp options.
   suffixes, mapped correctly to aria2c and yt-dlp.
 - **Safe recovery:** when aria2c fails, incomplete direct files are cleaned up
   and retried with yt-dlp without re-downloading completed files.
+- **Duplicate cleanup:** `--dedupe` removes files downloaded in the same run
+  whose content is identical to another, keeping the oldest copy (opt-in).
+- **Embedded images:** `--images` (opt-in) scans generic/html5 album pages for
+  `<img>` links; photos download with aria2c into the album folder, and
+  image-only albums work without a failing yt-dlp run.
 - **Predictable defaults:** yt-dlp runs with `--ignore-config` plus vdl's own
   defaults, optionally extended by `~/.config/vdl/yt-dlp.conf`.
 - **Configuration:** environment variables and a small `KEY=VALUE` config file,
   with CLI flags taking precedence.
 - **Preview and diagnostics:** `--dry-run` shows the resolved plan without
   downloading anything.
+- **Friendly output:** a startup banner, section headers, per-URL status
+  lines, and an end-of-run summary; yt-dlp progress renders as a live bar;
+  `--quiet` silences it all.
 - **Packaging:** installer/uninstaller, bash/zsh/fish completions, a man page,
   and a network-free smoke test suite.
 
@@ -70,6 +78,9 @@ speed limits, and unknown yt-dlp options.
 
 `vdl` checks what is available at run time: without `aria2c` it downloads
 direct files with yt-dlp, and without `curl_cffi` it skips impersonation.
+
+For a complete walk-through of installation, setup, every feature with
+examples, and uninstallation, see **[docs/USAGE.md](docs/USAGE.md)**.
 
 ## Install
 
@@ -102,6 +113,7 @@ vdl --download-dir ~/tmp "https://example.com/file.zip"
 vdl --quiet "https://example.com/video"               # no banner
 vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
 vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
+vdl --images "https://example.com/album/abc123"      # include album photos
 vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
 vdl --download-archive seen.txt -f "bv*+ba" \
   "https://example.com/video"                         # values stay attached
@@ -208,6 +220,7 @@ links.
 | `VDL_QUALITY` | `1080` | default max height |
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
 | `VDL_IMPERSONATE` | `auto` | `auto` (first target yt-dlp reports as available), `off`, or a target |
+| `VDL_IMAGES` | unset | set to `1` or `yes` to always scan album pages for embedded images |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp options, loaded if present |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
 | `NO_COLOR` | unset | disable colored output |
@@ -351,6 +364,7 @@ bin/vdl               the command
 install.sh            installer / uninstaller
 completions/          bash, zsh and fish completions
 man/vdl.1             man page
+docs/USAGE.md         installation, setup, usage and uninstallation guide
 test/smoke.sh         stub-based test suite (no network required)
 Makefile              convenience targets (test, lint, install)
 ```

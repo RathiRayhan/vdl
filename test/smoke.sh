@@ -25,7 +25,7 @@ export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -40,12 +40,59 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --list-impersonate-targets "* ]]; then
     fi
     exit 0
 fi
+if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
+    if [[ " $* " == *" -I 1 "* ]]; then
+        # vdl's embedded-image probe: answer with the page's extractor name.
+        if [[ ${FAKE_GENERIC_PAGE:-} == yes ]]; then
+            printf 'generic|\n'
+        else
+            printf 'youtube|\n'
+        fi
+    else
+        # playlist URL listing used to scope embedded images
+        printf 'https://cdn.example.com/album/video1.mp4\nhttps://cdn.example.com/album/video2.mp4\n'
+    fi
+    exit 0
+fi
 printf 'CALL %s\n' "${0##*/}" >> "$FAKE_LOG"
 for a in "$@"; do
     printf 'ARG %s\n' "$a" >> "$FAKE_LOG"
 done
 if [[ ${0##*/} == aria2c && ${FAKE_ARIA_FAIL:-} == yes ]]; then
     exit 1
+fi
+if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
+    dir=''
+    prev=''
+    for a in "$@"; do
+        [[ $prev == -d ]] && dir=$a
+        prev=$a
+    done
+    mkdir -p "$dir"
+    for a in "$@"; do
+        case $a in
+            http://*|https://*)
+                name=${a##*/}
+                name=${name%%\?*}
+                [[ -n $name ]] && printf 'same-content\n' > "$dir/$name"
+                ;;
+        esac
+    done
+fi
+if [[ ${0##*/} == curl ]]; then
+    outfile=''
+    prev=''
+    for a in "$@"; do
+        if [[ $prev == -o ]]; then outfile=$a; fi
+        prev=$a
+    done
+    html='<html><title>Test Album</title><link rel="icon" href="https://cdn.example.com/favicon.png"><img src="https://cdn.example.com/logo.png"><img data-rotate-src="https://cdn.example.com/thumbs/grid1.jpg"><img src="https://cdn.example.com/avatar/36x36/u1.jpeg"><img src="data:image/png;base64,AAAA"><img src="https://cdn.example.com/album/pic1.jpg?v=123"><img data-src="//cdn.example.com/album/pic2.png?v=9"><img src="https://cdn.example.com/album/video1.jpg"><img src="https://cdn.example.com/other/thumb/side.jpg"></html>'
+    if [[ -n $outfile ]]; then
+        printf '%s\n' "$html" > "$outfile"
+    else
+        printf '%s\n' "$html"
+    fi
+    exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
     printf 'https://example.com/from-clipboard\n'
@@ -131,7 +178,7 @@ if arg_has 'height<=720'; then ok; else bad "720p should map to 720"; fi
 
 # --- direct file via aria2c ------------------------------------------------
 if run -n 'https://example.com/file.iso' \
-    && called aria2c && arg_is -x && arg_is 16; then
+    && called aria2c && arg_is -x && arg_is 16 && arg_is -Z; then
     ok
 else
     bad "direct .iso should use aria2c"
@@ -237,11 +284,66 @@ else
     bad "--quiet should suppress the banner but keep dry-run details"
 fi
 
+# --- UI output: status lines and summary ------------------------------------
+run -n 'https://example.com/file.iso'
+if grep -q -- '--- Summary ---' "$out" && grep -q '\[ok\]' "$out"; then
+    ok
+else
+    bad "non-quiet runs should print per-URL status and a summary"
+fi
+
+run -n --quiet 'https://example.com/file.iso'
+if [[ ! -s $out ]]; then
+    ok
+else
+    bad "--quiet should print nothing to stdout"
+fi
+
+export FAKE_ARIA_FAIL=yes
+run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
+unset FAKE_ARIA_FAIL
+if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out"; then
+    ok
+else
+    bad "UI should mark failed downloads separately from retried ones"
+fi
+
+# --- embedded images on generic pages --------------------------------------
+export FAKE_GENERIC_PAGE=yes
+run -n --no-impersonate --images 'https://example.com/watch?v=abc'
+unset FAKE_GENERIC_PAGE
+if arg_is 'https://cdn.example.com/album/pic1.jpg' \
+    && arg_is 'https://cdn.example.com/album/pic2.png' \
+    && ! arg_has 'favicon' && ! arg_has 'logo' \
+    && ! arg_has 'avatar' && ! arg_has 'grid1' \
+    && ! arg_has 'video1' && ! arg_has 'side' \
+    && arg_is '-Z' && arg_is "$VDL_SAVE_DIR/Test Album" \
+    && called aria2c; then
+    ok
+else
+    bad "generic pages should queue album images but skip favicons/logos/covers/sidebar"
+fi
+
+run -n --no-impersonate 'https://example.com/watch?v=abc'
+if ! called curl && ! called aria2c; then
+    ok
+else
+    bad "image scanning should be off unless --images is given"
+fi
+
 # --- magnet link routing ---------------------------------------------------
 if run -n 'magnet:?xt=urn:btih:abc' && called aria2c && ! called yt-dlp; then
     ok
 else
     bad "magnet: links should route to aria2c"
+fi
+
+# --- compressed tarballs with short suffixes are direct ---------------------
+if run -n 'https://example.com/file.tgz' \
+    && called aria2c && ! called yt-dlp; then
+    ok
+else
+    bad ".tgz files should route to aria2c as direct downloads"
 fi
 
 # --- .torrent routing ------------------------------------------------------
@@ -336,6 +438,27 @@ if [[ $rc -eq 0 ]] \
     ok
 else
     bad "aria2c fallback should remove partials and retry only failed direct files"
+fi
+
+# --- dedupe removes identical files from this run ---------------------------
+export FAKE_ARIA_DUP=yes
+run -n --dedupe 'https://example.com/dup-a.iso' 'https://example.com/dup-b.iso'
+unset FAKE_ARIA_DUP
+if [[ ( -e $VDL_SAVE_DIR/dup-a.iso || -e $VDL_SAVE_DIR/dup-b.iso ) ]] \
+    && [[ ! ( -e $VDL_SAVE_DIR/dup-a.iso && -e $VDL_SAVE_DIR/dup-b.iso ) ]] \
+    && grep -q 'Removed duplicate' "$err"; then
+    ok
+else
+    bad "--dedupe should keep one copy of identical files from this run"
+fi
+
+export FAKE_ARIA_DUP=yes
+run -n 'https://example.com/dup-c.iso' 'https://example.com/dup-d.iso'
+unset FAKE_ARIA_DUP
+if [[ -e $VDL_SAVE_DIR/dup-c.iso && -e $VDL_SAVE_DIR/dup-d.iso ]]; then
+    ok
+else
+    bad "without --dedupe both copies should remain"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------
