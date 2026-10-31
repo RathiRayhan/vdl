@@ -239,6 +239,7 @@ read_vdl_config() {
             QUALITY)      [[ -z ${VDL_QUALITY:-} ]] && export VDL_QUALITY=$val ;;
             SAVE_DIR)     [[ -z ${VDL_SAVE_DIR:-} ]] && export VDL_SAVE_DIR=$val ;;
             IMPERSONATE)  [[ -z ${VDL_IMPERSONATE:-} ]] && export VDL_IMPERSONATE=$val ;;
+            IMAGES)       [[ -z ${VDL_IMAGES:-} ]] && export VDL_IMAGES=$val ;;
             TMP_KEEP_DAYS) [[ -z ${VDL_TMP_KEEP_DAYS:-} ]] && export VDL_TMP_KEEP_DAYS=$val ;;
             CONFIG)       [[ -z ${VDL_CONFIG:-} ]] && export VDL_CONFIG=$val ;;
         esac

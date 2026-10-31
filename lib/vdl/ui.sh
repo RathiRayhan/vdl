@@ -135,7 +135,11 @@ print_banner() {
     printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
     ui_row 'Engine' "$engine"
     ui_row 'Mode' "$mode"
-    ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
+    if (( ${#img_urls[@]} )); then
+        ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media, ${#img_urls[@]} images)"
+    else
+        ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
+    fi
     if (( ${#batch_files[@]} )); then
         ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi

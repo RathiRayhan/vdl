@@ -74,6 +74,7 @@ speed limits, and unknown yt-dlp options.
 | `aria2c` | fast direct-file downloads (optional) | `aria2` |
 | `ffmpeg` | `-a` audio extraction, merging | `ffmpeg` |
 | `python-curl_cffi` | browser impersonation (optional, auto-detected) | `python-curl-cffi` / `python3-curl_cffi` |
+| `curl` | embedded-image scanning (`--images`, optional) | `curl` |
 | `wl-clipboard`, `xclip`, or `xsel` | clipboard URL pickup (optional) | `wl-clipboard`, `xclip`, `xsel` |
 
 `vdl` checks what is available at run time: without `aria2c` it downloads

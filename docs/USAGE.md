@@ -43,6 +43,7 @@ sudo ./install.sh --system       # /usr/local, system-wide
 The installer places:
 
 - `vdl` in `<prefix>/bin`
+- its libraries in `<prefix>/lib/vdl`
 - the man page in `<prefix>/share/man/man1/vdl.1`
 - completions for bash, zsh, and fish (auto-detected shells by default)
 
@@ -60,12 +61,17 @@ man vdl
 
 ### Alternative: manual install
 
-Copy `bin/vdl` to any directory on your `PATH`:
+Copy `bin/vdl` and its libraries to any directory on your `PATH`:
 
 ```sh
 install -Dm755 bin/vdl ~/.local/bin/vdl
+install -d ~/.local/lib/vdl
+install -Dm644 lib/vdl/*.sh -t ~/.local/lib/vdl/
 install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 ```
+
+The script looks for its libraries in `../lib/vdl` next to the binary, so
+keep that relative layout (as `install.sh` does).
 
 Completions are optional; see `completions/` for `vdl.bash` (bash),
 `_vdl` (zsh), and `vdl.fish` (fish).

@@ -21,7 +21,10 @@ set -u -o pipefail
 
 readonly VDL_VERSION="2.0.0"
 
-vdl_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib/vdl" 2>/dev/null && pwd)"
+# Resolve the script's real location first, so a symlinked vdl on PATH can
+# still find its libraries.
+vdl_bin=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")
+vdl_lib="$(cd "$(dirname "$vdl_bin")/../lib/vdl" 2>/dev/null && pwd)"
 if [[ -z $vdl_lib || ! -d $vdl_lib ]]; then
     printf 'vdl: library directory not found next to the script (expected lib/vdl/)\n' >&2
     exit 1
@@ -559,6 +562,12 @@ elif (( ${#media[@]} )); then
     else
         engine="yt-dlp native"
     fi
+elif (( ${#img_urls[@]} )); then
+    if (( have_aria && ! no_aria )); then
+        engine="embedded images (aria2c)"
+    else
+        engine="embedded images (yt-dlp)"
+    fi
 else
     engine="idle"
 fi
@@ -567,6 +576,8 @@ if (( audio )); then
     mode="audio only (MP3 320k)"
 elif (( ${#direct[@]} )) && (( ${#media[@]} == 0 )); then
     mode="direct file download"
+elif (( ${#media[@]} == 0 )) && (( ${#img_urls[@]} )); then
+    mode="embedded images"
 else
     mode="video (max ${quality}p, MP4 preferred)"
 fi

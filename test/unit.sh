@@ -57,6 +57,15 @@ expect_eq "sanitize invalid chars" "$(sanitize_title 'a/b:c?d*e')" 'a⧸b：c？
 expect_eq "sanitize strips trailing" "$(sanitize_title 'x.. ')" 'x'
 expect_eq "sanitize keeps plain"     "$(sanitize_title 'My Album')" 'My Album'
 
+# --- normalize_quality ------------------------------------------------------
+expect_eq "quality 2k"    "$(normalize_quality 2k)"    1440
+expect_eq "quality 4k"    "$(normalize_quality 4k)"    2160
+expect_eq "quality 8k"    "$(normalize_quality 8k)"    4320
+expect_eq "quality 720"   "$(normalize_quality 720)"   720
+expect_eq "quality 1080p" "$(normalize_quality 1080p)" 1080
+expect_fail_fn "quality rejects 0"   normalize_quality 0
+expect_fail_fn "quality rejects abc" normalize_quality abc
+
 # --- url_filename -----------------------------------------------------------
 expect_eq "filename strips query/hash" "$(url_filename 'https://h/p/x.jpg?q=1#f')" 'x.jpg'
 expect_eq "filename plain"             "$(url_filename 'https://h/f.zip')" 'f.zip'
