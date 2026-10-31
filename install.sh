@@ -125,6 +125,10 @@ do_remove() {
             removed=$((removed + 1))
         fi
     done
+    if [[ -d $prefix/lib/vdl ]]; then
+        rm -rf -- "$prefix/lib/vdl"
+        printf 'removed %s\n' "$prefix/lib/vdl"
+    fi
     return 0
 }
 
@@ -163,6 +167,14 @@ fi
 
 install -m 0755 -- "$script_dir/bin/vdl" "$prefix/bin/vdl"
 printf 'installed %s\n' "$prefix/bin/vdl"
+
+if [[ -d $script_dir/lib/vdl ]]; then
+    install -d -- "$prefix/lib/vdl"
+    for libfile in "$script_dir"/lib/vdl/*.sh; do
+        install -m 0644 -- "$libfile" "$prefix/lib/vdl/"
+        printf 'installed %s\n' "$prefix/lib/vdl/${libfile##*/}"
+    done
+fi
 
 if (( install_completions )); then
     for sh in $shells; do

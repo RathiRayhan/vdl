@@ -21,7 +21,8 @@ jobs:
 
       - name: ShellCheck
         run: |
-          shellcheck --shell=bash bin/vdl install.sh test/smoke.sh
+          shellcheck --shell=bash bin/vdl install.sh test/smoke.sh test/unit.sh \
+            lib/vdl/ui.sh lib/vdl/helpers.sh lib/vdl/images.sh lib/vdl/downloads.sh
           shellcheck completions/vdl.bash
           # zsh and fish completions use syntax that shellcheck's bash mode
           # cannot parse; they are verified by manual review and smoke tests.
@@ -29,3 +30,7 @@ jobs:
       - name: Smoke tests
         run: |
           bash test/smoke.sh
+
+      - name: Unit tests
+        run: |
+          bash test/unit.sh

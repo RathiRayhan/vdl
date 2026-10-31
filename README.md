@@ -360,12 +360,15 @@ not slowed down.
 ## Layout
 
 ```
-bin/vdl               the command
+bin/vdl               the command (orchestrator)
+lib/vdl/              sourced libraries: ui, helpers, images, downloads
 install.sh            installer / uninstaller
 completions/          bash, zsh and fish completions
 man/vdl.1             man page
 docs/USAGE.md         installation, setup, usage and uninstallation guide
+docs/SPEC.md          behavior contract for maintainers and AI agents
 test/smoke.sh         stub-based test suite (no network required)
+test/unit.sh          unit tests for pure helper functions
 Makefile              convenience targets (test, lint, install)
 ```
 
@@ -397,11 +400,15 @@ added it.
 ## Tests
 
 ```sh
-make test               # or: bash test/smoke.sh
+make test               # smoke + unit tests
 make lint               # shellcheck all scripts
 ```
 
-The suite stubs `yt-dlp`, `aria2c`, `ffmpeg`, and `wl-paste`, so it runs
-without network access or those tools installed. It covers routing, batch
-files, ordered option forwarding, speed-limit mapping, validation, dry-run,
-config precedence, and aria2c partial-download recovery.
+The smoke suite stubs `yt-dlp`, `aria2c`, `ffmpeg`, `curl`, and `wl-paste`,
+so it runs without network access or those tools installed. It covers
+routing, batch files, ordered option forwarding, speed-limit mapping,
+validation, dry-run, config precedence, aria2c partial-download recovery,
+dedupe, and embedded images. The unit suite covers the pure helpers
+(speed/title normalization, filename extraction, URL classification).
+
+See `docs/SPEC.md` for the full behavior contract the code implements.

@@ -2,13 +2,16 @@
 
 .PHONY: test lint install clean man
 
-## Run the smoke test suite
+## Run the smoke and unit test suites
 test:
 	bash test/smoke.sh
+	bash test/unit.sh
 
 ## Lint all shell scripts with shellcheck
 lint:
-	shellcheck bin/vdl install.sh test/smoke.sh completions/vdl completions/vdl.fish completions/_vdl
+	shellcheck --shell=bash bin/vdl install.sh test/smoke.sh test/unit.sh \
+		lib/vdl/ui.sh lib/vdl/helpers.sh lib/vdl/images.sh lib/vdl/downloads.sh
+	shellcheck completions/vdl.bash
 
 ## Install vdl locally (user-level)
 install:
