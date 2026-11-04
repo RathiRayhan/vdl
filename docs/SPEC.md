@@ -118,6 +118,18 @@ stricter non-zero value when both flags are set.
 - Same byte size, then identical SHA-256, then delete all but the oldest
   copy.  Pre-existing files can never be deleted.
 
+## Custom filename (`--name NAME`)
+
+- Applies to a single input URL only; more than one URL is a usage error
+  (exit 2).
+- Direct files: `NAME` with the URL's extension appended when NAME has none;
+  a NAME containing an extension is used verbatim.
+- Media/audio: appended as the last `-o` to yt-dlp (the last one wins);
+  without an extension the template `NAME.%(ext)s` is used so the real
+  container wins.  Audio mode always uses `.mp3`.
+- Embedded images keep their own names; on image-only pages `--name` is
+  ignored with a note.
+
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new

@@ -32,6 +32,7 @@ Options:
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
       --limit-speed RATE   Per-download speed limit
+      --name NAME          Save a single download under this filename
       --referer URL        Send this Referer header
       --user-agent UA      Send this User-Agent header
       --proxy URL          Route downloads through this proxy
@@ -68,6 +69,7 @@ Examples:
   vdl --no-aria -F "https://example.com/video"
   vdl --dry-run "https://example.com/file.iso"
   vdl --download-dir ~/tmp "https://example.com/file.zip"
+  vdl --name my-archive "https://example.com/file.zip"
   vdl --images "https://example.com/album/abc123"
   vdl magnet:?xt=urn:btih:abc123
 EOF

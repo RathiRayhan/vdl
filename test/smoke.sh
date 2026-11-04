@@ -461,6 +461,30 @@ else
     bad "without --dedupe both copies should remain"
 fi
 
+# --- custom filename --------------------------------------------------------
+run -n --name myfile 'https://example.com/file.iso'
+if called aria2c && arg_is -o && arg_is 'myfile.iso'; then
+    ok
+else
+    bad "--name should rename a direct file (extension appended)"
+fi
+
+run -n --no-impersonate --name myvid 'https://example.com/watch?v=abc'
+last_o=$(awk '/^ARG -o$/{getline; val=$0} END{print val}' "$log")
+if [[ $last_o == 'ARG myvid.%(ext)s' ]]; then
+    ok
+else
+    bad "--name should append a media output template (got $last_o)"
+fi
+
+run -n --name x 'https://example.com/a.iso' 'https://example.com/b.iso'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'single URL' "$err"; then
+    ok
+else
+    bad "--name with multiple URLs should exit 2"
+fi
+
 # --- aria-opts forwarding --------------------------------------------------
 run -n --aria-opts '--check-interval=30 --max-connection-per-server=4' \
     'https://example.com/file.iso'

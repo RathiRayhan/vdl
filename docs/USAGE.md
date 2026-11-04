@@ -374,6 +374,21 @@ album, so photo posts download cleanly instead of failing with
 `ERROR: Unsupported URL`. Pages handled by a known extractor (YouTube,
 html5, ...) are not scanned, and `--dry-run` never touches the network.
 
+### Custom filename
+
+`--name` saves a single download under a custom filename. The extension is
+appended automatically when the name has none (in `-a` audio mode it is
+always `.mp3`); a name that already includes an extension is used verbatim.
+
+```sh
+vdl --name my-rom "https://example.com/file.iso"        # -> my-rom.iso
+vdl --name "episode 1" "https://example.com/video"      # -> episode 1.mp4
+vdl --name custom.mp4 "https://example.com/video"       # verbatim
+```
+
+`--name` requires exactly one URL (and that URL must download a single
+file/video; embedded images from `--images` keep their own names).
+
 ### Interrupting a download
 
 Press Ctrl+C any time. Items that finished downloading are already moved to

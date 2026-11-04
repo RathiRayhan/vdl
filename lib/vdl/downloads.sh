@@ -70,12 +70,18 @@ download_directs() {
     done
 
     declare -a aria_args=(
-        -Z
         -x 16 -s 16 -k 1M
         --continue=true
         --file-allocation=none
         -d "$save_dir"
     )
+    # aria2c ignores -o when -Z is used, so pick one or the other: a custom
+    # name implies a single URL, which does not need -Z anyway.
+    if [[ -n ${custom_direct:-} ]]; then
+        aria_args+=( -o "$custom_direct" )
+    else
+        aria_args+=( -Z )
+    fi
     [[ -n $ua ]] && aria_args+=( "--user-agent=$ua" )
     [[ -n $referer ]] && aria_args+=( "--referer=$referer" )
     [[ -n $proxy ]] && aria_args+=( "--all-proxy=$proxy" )
@@ -171,9 +177,12 @@ download_pending_directs() {
     [[ -n $proxy ]] && yt_direct+=( --proxy "$proxy" )
 
     # yt-dlp's generic extractor calls unknown file types "unknown_video".
-    # Use the URL basename so direct files keep their real name.
+    # Use the URL basename so direct files keep their real name, unless a
+    # custom name was requested.
     for u in "${direct_pending[@]}"; do
-        if name=$(url_filename "$u"); then
+        if [[ -n ${custom_direct:-} ]]; then
+            name=$custom_direct
+        elif name=$(url_filename "$u"); then
             name=${name//%/%%}
         else
             name='%(title)s.%(ext)s'
@@ -248,6 +257,8 @@ download_media() {
             -o '%(playlist_title,album)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
         )
     fi
+    # A custom name overrides the default template (the last -o wins).
+    [[ -n ${custom_media:-} ]] && yt_media+=( -o "$custom_media" )
 
     media_rc=0
     yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?

@@ -140,6 +140,7 @@ print_banner() {
     else
         ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
     fi
+    [[ -n ${custom_name:-} ]] && ui_row 'Name' "$custom_name"
     if (( ${#batch_files[@]} )); then
         ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi

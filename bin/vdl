@@ -60,6 +60,7 @@ images=0
 aria_opts=''
 max_speed=''
 limit_speed=''
+custom_name=''
 
 declare -a batch_files=()
 declare -a raw_args=()
@@ -229,6 +230,16 @@ while (( $# > 0 )); do
             limit_speed=${arg#*=}
             prev_unknown_flag=0
             ;;
+        --name)
+            (( $# > 0 )) || need_value "$arg"
+            custom_name=$1
+            shift
+            prev_unknown_flag=0
+            ;;
+        --name=*)
+            custom_name=${arg#*=}
+            prev_unknown_flag=0
+            ;;
         --)
             while (( $# > 0 )); do
                 raw_args+=("$1")
@@ -391,6 +402,16 @@ for u in "${urls[@]}"; do
 done
 urls=("${uniq_urls[@]}")
 
+# --name applies to a single URL; remember it before images are appended.
+named_url=''
+if [[ -n $custom_name ]]; then
+    if (( ${#urls[@]} != 1 )); then
+        err "--name works with a single URL"
+        exit 2
+    fi
+    named_url=${urls[0]}
+fi
+
 # ---------------------------------------------------------------------------
 # 4. Paths and dependencies
 # ---------------------------------------------------------------------------
@@ -472,6 +493,45 @@ if (( ${#direct[@]} )); then
         else
             note "aria2c not installed: direct files will be fetched with yt-dlp"
         fi
+    fi
+fi
+
+# Resolve --name into the concrete output names.  For a direct file the
+# extension is appended literally when the user's name lacks one; for a
+# media download the yt-dlp template %(ext)s is used so the real container
+# extension wins.  In audio mode the extension is always mp3.
+custom_direct=''
+custom_media=''
+if [[ -n $custom_name ]]; then
+    ext=''
+    uext=${named_url##*/}
+    uext=${uext%%\?*}
+    uext=${uext%%#*}
+    case $uext in
+        *.*) ext=${uext##*.} ;;
+    esac
+    ext=${ext,,}
+    [[ $ext =~ ^[a-z0-9]{1,8}$ ]] || ext=''
+    (( audio )) && ext=mp3
+
+    if [[ $custom_name == *.* ]]; then
+        custom_direct=$custom_name
+        custom_media=$custom_name
+    else
+        custom_direct=$custom_name
+        [[ -n $ext ]] && custom_direct=$custom_name.$ext
+        custom_media=$custom_name.'%(ext)s'
+    fi
+
+    if (( ${#direct[@]} )); then
+        (( ${#direct[@]} == 1 )) || { err "--name works with a single direct file"; exit 2; }
+    elif (( ${#media[@]} )); then
+        (( ${#media[@]} == 1 )) || { err "--name works with a single media item"; exit 2; }
+    elif (( ${#img_urls[@]} )); then
+        note "--name ignored: this page only yields embedded images"
+        custom_name=''
+        custom_direct=''
+        custom_media=''
     fi
 fi
 
