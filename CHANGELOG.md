@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Termux support: `install.sh --termux`, automatic `$PREFIX` detection,
+  Termux-aware default save directory (`~/storage/downloads/vdl`), automatic
+  wake lock via Termux:API, and a detailed `docs/TERMUX.md` guide.  Browser
+  auto-detection is disabled on Termux because Android browser profiles are
+  app-private.
+- `--cookies FILE` / `VDL_COOKIES`: pass a Netscape cookies.txt file to every
+  yt-dlp invocation.  Useful for non-root Termux and other environments where
+  yt-dlp cannot read browser profiles directly.
+- `--root-cookies` / `VDL_ROOT_COOKIES`: Termux root-only import of Firefox
+  for Android's plaintext cookie database via `su`.  Chromium-based Android
+  browsers are not supported because their cookie values are encrypted with
+  the Android Keystore.
+- `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 - Redesigned terminal output: a restyled banner, section headers per download
   phase, per-URL status lines with `[ok]`/`[fail]` markers, and an end-of-run
   summary with per-engine results, elapsed time, and save directory.

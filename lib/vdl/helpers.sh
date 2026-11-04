@@ -8,7 +8,7 @@
 
 usage() {
     cat <<'EOF'
-vdl - smart downloader for Linux (yt-dlp + aria2c)
+vdl - smart downloader for Linux and Termux (yt-dlp + aria2c)
 
 Usage:
   vdl [options] <url> | <links.txt>
@@ -18,6 +18,9 @@ Options:
   -b, --browser NAME       Browser to take cookies from (default: auto-detect)
                            vivaldi firefox brave chromium chrome edge opera
                            safari whale none    (NAME:PROFILE also works)
+      --cookies FILE       Read cookies from a Netscape cookies.txt file
+      --root-cookies       Termux root only: import Firefox Android cookies
+                           via su (Chrome/Chromium cookies are encrypted)
   -n, --no-cookies         Do not read browser cookies
   -q, --quality HEIGHT     Max video height (default: 1080; 2k=1440, 4k=2160)
   -a, --audio              Audio only, converted to MP3 320k
@@ -44,12 +47,16 @@ value can always be written as --flag=value; that form is never mistaken
 for a URL or a batch file.
 
 Environment:
-  VDL_SAVE_DIR        Download directory (default: XDG download dir + /vdl)
+  VDL_SAVE_DIR        Download directory (default: XDG download dir + /vdl;
+                      Termux: ~/storage/downloads/vdl when storage is set up)
   VDL_BROWSER         Default browser, overridden by -b
   VDL_QUALITY         Default max height, overridden by -q
   VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (default: 7)
   VDL_IMPERSONATE     auto | off | <target> (default: auto = chrome)
   VDL_IMAGES          1 | yes to always scan album pages for images
+  VDL_COOKIES         Netscape cookies.txt file passed to yt-dlp
+  VDL_ROOT_COOKIES    1 | firefox to import Firefox Android cookies via su
+  VDL_WAKELOCK        1 | 0 to hold/release a Termux wake lock (default: 1)
   VDL_CONFIG          Extra yt-dlp config file
                       (default: ~/.config/vdl/yt-dlp.conf)
   VDL_CONFIG_DIR      Directory for vdl's own config file
@@ -80,8 +87,23 @@ need_value() {
     exit 2
 }
 
+# True when vdl is running inside Termux.  TERMUX_VERSION is the primary
+# marker; PREFIX is a fallback for stripped-down Termux environments.
+is_termux() {
+    [[ -n ${TERMUX_VERSION:-} ]] || [[ ${PREFIX:-} == */com.termux/files/usr ]]
+}
+
 detect_browser() {
     local name dir
+
+    # Android browser profiles are app-private; without an explicit
+    # --root-cookies, Termux cannot read them.  Do not probe desktop paths
+    # that will never exist on a phone.
+    if is_termux; then
+        printf 'none\n'
+        return 0
+    fi
+
     while IFS='|' read -r name dir; do
         if [[ -d $dir ]]; then
             printf '%s\n' "$name"
@@ -97,6 +119,44 @@ edge|$HOME/.config/microsoft-edge
 opera|$HOME/.config/opera
 EOF
     printf 'none\n'
+}
+
+# Root-only Termux helper: copy Firefox for Android's cookie database out of
+# app-private storage and into a cache directory yt-dlp can read.  Firefox
+# keeps cookies in a plaintext SQLite database, so root can stage it.
+#
+# Chrome/Chromium/Brave are deliberately unsupported: Android encrypts their
+# cookie values with a key held by the Android Keystore, which yt-dlp cannot
+# decrypt.  Use --cookies with a cookies.txt file for those browsers.
+# Prints the staged profile directory on success.
+termux_root_firefox_profile() {
+    local cache=${XDG_CACHE_HOME:-$HOME/.cache}/vdl/root-cookies/firefox
+    local data_root=${VDL_TERMUX_FIREFOX_ROOT:-/data/data}
+    local db='' pkg base
+
+    have su || return 1
+    [[ $(su -c 'id -u' 2>/dev/null) == 0 ]] || return 1
+
+    for pkg in org.mozilla.firefox org.mozilla.firefox_beta org.mozilla.fenix; do
+        base=$(printf '%q' "$data_root/$pkg/files")
+        db=$(su -c "find $base -name cookies.sqlite -type f -print 2>/dev/null" 2>/dev/null | head -n 1) || db=''
+        [[ -n $db ]] && break
+    done
+    [[ -n $db ]] || return 1
+
+    rm -rf -- "$cache"
+    mkdir -p -- "$cache" || return 1
+    chmod 700 -- "$cache" 2>/dev/null || true
+    if ! su -c "cat $(printf '%q' "$db")" > "$cache/cookies.sqlite" 2>/dev/null; then
+        rm -rf -- "$cache"
+        return 1
+    fi
+    if [[ ! -s $cache/cookies.sqlite ]]; then
+        rm -rf -- "$cache"
+        return 1
+    fi
+    chmod 600 -- "$cache/cookies.sqlite" 2>/dev/null || true
+    printf '%s\n' "$cache"
 }
 
 read_clipboard() {
@@ -243,6 +303,9 @@ read_vdl_config() {
             IMPERSONATE)  [[ -z ${VDL_IMPERSONATE:-} ]] && export VDL_IMPERSONATE=$val ;;
             IMAGES)       [[ -z ${VDL_IMAGES:-} ]] && export VDL_IMAGES=$val ;;
             TMP_KEEP_DAYS) [[ -z ${VDL_TMP_KEEP_DAYS:-} ]] && export VDL_TMP_KEEP_DAYS=$val ;;
+            COOKIES)      [[ -z ${VDL_COOKIES:-} ]] && export VDL_COOKIES=$val ;;
+            ROOT_COOKIES) [[ -z ${VDL_ROOT_COOKIES:-} ]] && export VDL_ROOT_COOKIES=$val ;;
+            WAKELOCK)     [[ -z ${VDL_WAKELOCK:-} ]] && export VDL_WAKELOCK=$val ;;
             CONFIG)       [[ -z ${VDL_CONFIG:-} ]] && export VDL_CONFIG=$val ;;
         esac
     done < "$conf"

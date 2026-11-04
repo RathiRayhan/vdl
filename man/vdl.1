@@ -1,6 +1,6 @@
-.TH VDL 1 "2026-10-22" "vdl 2.0.0" "User Commands"
+.TH VDL 1 "2026-11-04" "vdl 2.0.0" "User Commands"
 .SH NAME
-vdl \- portable smart downloader for Linux (yt-dlp + aria2c)
+vdl \- portable smart downloader for Linux and Termux (yt-dlp + aria2c)
 .SH SYNOPSIS
 .B vdl
 [\fIOPTIONS\fR] [\fIurl\fR | \fIlinks.txt\fR]
@@ -36,6 +36,19 @@ A profile may be appended with \fB:\fR, e.g. \fBfirefox:work\fP.
 .TP
 .BR \-n ", " \-\-no-cookies
 Do not read browser cookies.
+.TP
+.B \-\-cookies \fIFILE\fR
+Read cookies from a Netscape-format \fIcookies.txt\fP file.  Useful on
+Termux and other systems where yt-dlp cannot read browser profiles directly.
+.TP
+.B \-\-root-cookies
+Termux root only: copy Firefox for Android's cookie database out of
+app-private storage with
+.B su
+and pass it to yt-dlp.  Chrome, Chromium, Brave, and other Android
+Chromium-based browsers encrypt their cookie values with the Android
+Keystore, so they are not supported by this option; export a cookies.txt
+file instead.
 .TP
 .BR \-q ", " \-\-quality " " \fIMAXHEIGHT\fR
 Maximum video height (default: 1080; 2k=1440, 4k=2160).
@@ -110,11 +123,23 @@ so that the form is never mistaken for a URL or a batch file.
 .TP
 .B VDL_SAVE_DIR
 Download directory (default: XDG download dir +
-.IR /vdl ).
+.IR /vdl ;
+on Termux, \fI~/storage/downloads/vdl\fP when storage is set up).
 .TP
 .B VDL_BROWSER
 Default browser, overridden by
 .BR \-b .
+.TP
+.B VDL_COOKIES
+Netscape cookies.txt file passed to yt-dlp, overridden by
+.BR \-\-cookies .
+.TP
+.B VDL_ROOT_COOKIES
+Set to \fB1\fR or \fBfirefox\fR to import Firefox Android cookies via root
+on Termux.
+.TP
+.B VDL_WAKELOCK
+Set to \fB0\fR to disable the automatic Termux wake lock.
 .TP
 .B VDL_QUALITY
 Default max height, overridden by
@@ -157,6 +182,8 @@ vdl links.txt                            # every URL listed in links.txt
 vdl -q 720 links.txt
 vdl -a "https://example.com/album"        # MP3 320k
 vdl -n "https://example.com/file.iso"     # direct file, no cookies
+vdl --cookies cookies.txt "https://example.com/video"  # manual cookies
+vdl --root-cookies "https://example.com/video"  # Termux + root + Firefox
 vdl --no-aria -F "https://example.com/video"  # list formats
 vdl --dry-run "https://example.com/file.iso"   # preview routing
 vdl --download-dir ~/tmp "https://example.com/file.zip"

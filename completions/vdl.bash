@@ -16,7 +16,7 @@ _vdl() {
             COMPREPLY=( $(compgen -W "360 480 720 1080 1440 2160 4320 2k 4k 8k" -- "$cur") )
             return
             ;;
-        -i|--batch-file)
+        -i|--batch-file|--cookies)
             COMPREPLY=( $(compgen -f -- "$cur") )
             return
             ;;
@@ -26,7 +26,7 @@ _vdl() {
     esac
 
     if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --dedupe --images --quiet --aria-opts --max-speed --limit-speed --name --referer --user-agent --proxy" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --cookies --root-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --dedupe --images --quiet --aria-opts --max-speed --limit-speed --name --referer --user-agent --proxy" -- "$cur") )
     elif [[ $cur == *=* && $prev == --* ]]; then
         return
     else

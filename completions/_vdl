@@ -10,6 +10,8 @@ _vdl() {
         '(-V --version)'{-V,--version}'[show version]' \
         '(-b --browser)'{-b,--browser}'[browser to read cookies from]:browser:(vivaldi firefox brave chromium chrome edge opera safari whale none)' \
         '(-n --no-cookies)'{-n,--no-cookies}'[do not read browser cookies]' \
+        '--cookies=[read cookies from a Netscape cookies.txt file]:file:_files' \
+        '--root-cookies[import Firefox Android cookies via su (Termux root only)]' \
         '(-q --quality)'{-q,--quality}'[maximum video height]:height:(360 480 720 1080 1440 2160 4320 2k 4k 8k)' \
         '(-a --audio)'{-a,--audio}'[audio only, MP3 320k]' \
         '*'-i'[read URLs from a file]:file:_files' \

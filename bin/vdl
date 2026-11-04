@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# vdl - portable smart downloader for Linux (yt-dlp + aria2c)
+# vdl - portable smart downloader for Linux and Termux (yt-dlp + aria2c)
 #
 # Requires: bash 4+, yt-dlp.
 # Optional: aria2c, ffmpeg, curl_cffi (browser impersonation),
-#           wl-paste / xclip / xsel (clipboard), xdg-user-dir, curl (images).
+#           wl-paste / xclip / xsel (clipboard), xdg-user-dir, curl (images),
+#           su + Firefox for Android (--root-cookies on Termux),
+#           termux-api (wake lock).
 #
 # Direct files (.zip, .iso, .pdf, .mp4 links, ...) go to aria2c when it is
 # available; pages, playlists and streams go to yt-dlp.  All yt-dlp defaults
@@ -44,6 +46,8 @@ source "$vdl_lib/downloads.sh"
 browser_arg=''
 browser_set=0
 no_cookies=0
+cookies_file=''
+root_cookies=0
 quality_arg=''
 quality_set=0
 audio=0
@@ -82,6 +86,20 @@ while (( $# > 0 )); do
             ;;
         -n|--no-cookies)
             no_cookies=1
+            prev_unknown_flag=0
+            ;;
+        --cookies)
+            (( $# > 0 )) || need_value "$arg"
+            cookies_file=$1
+            shift
+            prev_unknown_flag=0
+            ;;
+        --cookies=*)
+            cookies_file=${arg#*=}
+            prev_unknown_flag=0
+            ;;
+        --root-cookies)
+            root_cookies=1
             prev_unknown_flag=0
             ;;
         -a|--audio)
@@ -270,6 +288,45 @@ done
 # ---------------------------------------------------------------------------
 read_vdl_config
 
+# Manual cookies file and root-only Firefox import.  CLI flags have already
+# been captured, so only fill in values from the environment/config file.
+[[ -z $cookies_file && -n ${VDL_COOKIES:-} ]] && cookies_file=$VDL_COOKIES
+if (( ! root_cookies )); then
+    case ${VDL_ROOT_COOKIES:-} in
+        1|yes|firefox) root_cookies=1 ;;
+    esac
+fi
+
+if (( no_cookies )); then
+    [[ -n $cookies_file ]] && warn "--no-cookies ignores the cookies file"
+    (( root_cookies )) && warn "--no-cookies ignores --root-cookies"
+    cookies_file=''
+    root_cookies=0
+fi
+
+cookies_file=${cookies_file/#\~/$HOME}
+
+if [[ -n $cookies_file && ! -f $cookies_file ]]; then
+    err "Cookies file not found: $cookies_file"
+    exit 2
+fi
+
+if (( root_cookies )); then
+    if ! is_termux; then
+        err "--root-cookies is only supported inside Termux"
+        exit 2
+    fi
+    if (( browser_set )); then
+        case ${browser_arg,,} in
+            firefox|firefox:*) ;;
+            *)
+                err "--root-cookies only supports Firefox; use --cookies for other browsers"
+                exit 2
+                ;;
+        esac
+    fi
+fi
+
 # Convert speed limits once, before any downloader runs.  Keeping them as
 # plain byte values avoids aria2c's rejection of "1.5M"/"1G" and the different
 # semantics of the two backends' rate options.
@@ -289,6 +346,9 @@ if [[ -n $limit_speed ]]; then
 fi
 
 if (( no_cookies )); then
+    browser=none
+elif (( root_cookies )); then
+    # Staged later, once we know there is work to do and root is available.
     browser=none
 elif (( browser_set )); then
     browser=$browser_arg
@@ -315,6 +375,9 @@ if [[ $browser != none ]]; then
             exit 2
             ;;
     esac
+    if is_termux && [[ $browser != *:* ]] && (( ! root_cookies )); then
+        warn "Termux cannot read Android browser profiles; use --cookies FILE or --root-cookies"
+    fi
 fi
 
 if (( quality_set )); then
@@ -402,6 +465,37 @@ for u in "${urls[@]}"; do
 done
 urls=("${uniq_urls[@]}")
 
+# Root-only Firefox cookie import: copy the Android Firefox cookie database
+# into Termux's cache so yt-dlp (running as the Termux UID) can read it.
+if (( root_cookies )); then
+    if ! root_profile=$(termux_root_firefox_profile); then
+        err "Could not import Firefox Android cookies via root"
+        printf '    Check that the device is rooted, Firefox is installed, and su grants Termux access.\n' >&2
+        printf '    Android Chrome/Chromium cookies are encrypted; export cookies.txt and use --cookies.\n' >&2
+        exit 1
+    fi
+    browser="firefox:$root_profile"
+    note "Imported Firefox Android cookies via root"
+fi
+
+cookie_label=''
+if (( root_cookies )); then
+    cookie_label='firefox (root)'
+elif [[ $browser != none ]]; then
+    cookie_label=$browser
+fi
+if [[ -n $cookies_file ]]; then
+    if [[ -n $cookie_label ]]; then
+        cookie_label+=" + $(basename -- "$cookies_file")"
+    else
+        cookie_label="file: $(basename -- "$cookies_file")"
+    fi
+fi
+
+declare -a yt_cookie_args=()
+[[ $browser != none ]] && yt_cookie_args+=( --cookies-from-browser "$browser" )
+[[ -n $cookies_file ]] && yt_cookie_args+=( --cookies "$cookies_file" )
+
 # --name applies to a single URL; remember it before images are appended.
 named_url=''
 if [[ -n $custom_name ]]; then
@@ -421,7 +515,15 @@ elif [[ -n ${VDL_SAVE_DIR:-} ]]; then
     save_dir=$VDL_SAVE_DIR
 else
     download_base=''
-    if have xdg-user-dir; then
+    if is_termux; then
+        if [[ -d $HOME/storage/downloads ]]; then
+            download_base=$HOME/storage/downloads
+        else
+            download_base=$HOME/Downloads
+            note "Termux shared storage is not set up; using $download_base"
+            note "Run 'termux-setup-storage' to make downloads visible to Android apps"
+        fi
+    elif have xdg-user-dir; then
         download_base=$(xdg-user-dir DOWNLOAD 2>/dev/null) || download_base=''
     fi
     if [[ -z $download_base || $download_base == "$HOME" ]]; then
@@ -429,6 +531,7 @@ else
     fi
     save_dir=$download_base/vdl
 fi
+save_dir=${save_dir/#\~/$HOME}
 tmp_dir=$save_dir/.tmp
 tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
 [[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
@@ -438,7 +541,26 @@ cleanup_tmp() {
     find "$tmp_dir" -mindepth 1 -type d -empty -mtime +0 -delete 2>/dev/null || true
     rmdir "$tmp_dir" 2>/dev/null || true
 }
-trap cleanup_tmp EXIT
+
+# Android can suspend Termux when the screen turns off.  When the Termux:API
+# app provides the wake-lock command, hold one for the duration of the run.
+termux_wakelock=0
+if (( ! dry_run )) && is_termux \
+    && [[ ${VDL_WAKELOCK:-1} != 0 && ${VDL_WAKELOCK:-1} != no ]] \
+    && have termux-wake-lock; then
+    if termux-wake-lock >/dev/null 2>&1; then
+        termux_wakelock=1
+    fi
+fi
+
+# shellcheck disable=SC2317,SC2329  # exit trap handler
+cleanup_all() {
+    cleanup_tmp
+    if (( termux_wakelock )); then
+        termux-wake-unlock >/dev/null 2>&1 || true
+    fi
+}
+trap cleanup_all EXIT
 
 # Ctrl+C: finished items have already been moved to their final folders;
 # only the download in flight stays in the temp dir.  Tell the user how to
@@ -531,6 +653,7 @@ if [[ -n $custom_name ]]; then
         # filename.  One light probe tells the two cases apart.
         if (( ! dry_run )) && have yt-dlp; then
             pl_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+                ${yt_cookie_args[@]+"${yt_cookie_args[@]}"} \
                 --print '%(playlist_count)s' -- "${media[0]}" 2>/dev/null)
             pl_out=${pl_out##*$'\n'}
             if [[ $pl_out =~ ^[0-9]+$ ]]; then
@@ -570,6 +693,7 @@ declare -a yt_common=( --ignore-config )
 if [[ -f $extra_conf ]]; then
     yt_common+=( --config-locations "$extra_conf" )
 fi
+(( ${#yt_cookie_args[@]} )) && yt_common+=( "${yt_cookie_args[@]}" )
 yt_common+=(
     --socket-timeout 15
     --retries 10

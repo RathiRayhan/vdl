@@ -168,9 +168,6 @@ download_pending_directs() {
 
     declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
     yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
-    if [[ $browser != none ]]; then
-        yt_direct+=( --cookies-from-browser "$browser" )
-    fi
     [[ -n $impersonate ]] && yt_direct+=( --impersonate "$impersonate" )
     [[ -n $ua ]] && yt_direct+=( --user-agent "$ua" )
     [[ -n $referer ]] && yt_direct+=( --referer "$referer" )
@@ -227,9 +224,6 @@ download_media() {
     fi
     yt_media+=( --downloader "dash,m3u8:native" -N 8 )
 
-    if [[ $browser != none ]]; then
-        yt_media+=( --cookies-from-browser "$browser" )
-    fi
     [[ -n $impersonate ]] && yt_media+=( --impersonate "$impersonate" )
     [[ -n $ua ]] && yt_media+=( --user-agent "$ua" )
     [[ -n $referer ]] && yt_media+=( --referer "$referer" )

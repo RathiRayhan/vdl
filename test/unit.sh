@@ -101,5 +101,15 @@ assert_direct "bare page is media" 'https://h/page'   1
 assert_direct "html is media"      'https://h/f.html' 1
 assert_direct "txt is media"       'https://h/f.txt'  1
 
+# --- Termux detection -------------------------------------------------------
+expect_eq "termux via TERMUX_VERSION" \
+    "$(TERMUX_VERSION=termux is_termux && printf yes)" yes
+expect_eq "termux via PREFIX" \
+    "$(unset TERMUX_VERSION; PREFIX=/data/data/com.termux/files/usr is_termux && printf yes)" yes
+expect_eq "not termux" \
+    "$(unset TERMUX_VERSION PREFIX; is_termux || printf no)" no
+expect_eq "termux browser detection is disabled" \
+    "$(TERMUX_VERSION=termux detect_browser)" none
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

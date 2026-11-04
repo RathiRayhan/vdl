@@ -3,10 +3,11 @@
 [![CI](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A portable smart downloader for Linux: direct files go through **aria2c** when
-available, pages/playlists/streams go through **yt-dlp**, and either engine can
-be used alone. It is a single Bash script with no runtime dependencies beyond
-`yt-dlp` (and `bash`), so it behaves the same on any distribution.
+A portable smart downloader for Linux and Termux: direct files go through
+**aria2c** when available, pages/playlists/streams go through **yt-dlp**, and
+either engine can be used alone. It is a single Bash script with no runtime
+dependencies beyond `yt-dlp` (and `bash`), so it behaves the same on any
+distribution — and on Android through Termux.
 
 ## What it does
 
@@ -36,8 +37,13 @@ speed limits, and unknown yt-dlp options.
   for HLS/DASH, a configurable height cap, and MP4 output when possible.
 - **Audio extraction:** `-a` downloads the best audio and converts it to MP3
   320k under `<save_dir>/audio`.
-- **Browser integration:** auto-detects installed browsers, accepts a specific
-  profile such as `firefox:work`, and can disable cookies with `-n`.
+- **Cookie support:** auto-detects installed desktop browsers, accepts a
+  specific profile such as `firefox:work`, reads Netscape `cookies.txt` files
+  with `--cookies`, and can disable cookies with `-n`. On rooted Termux,
+  `--root-cookies` imports Firefox for Android cookies via `su`.
+- **Termux aware:** defaults to shared storage after `termux-setup-storage`,
+  holds a wake lock during long downloads when Termux:API is installed, and
+  ships a `--termux` installer mode.
 - **TLS impersonation:** uses a yt-dlp-supported browser target when available,
   with `auto`, `off`, or an explicit target.
 - **Flexible input:** positional URLs, repeatable `--batch-file`, `www.` URL
@@ -62,8 +68,8 @@ speed limits, and unknown yt-dlp options.
 - **Friendly output:** a startup banner, section headers, per-URL status
   lines, and an end-of-run summary; yt-dlp progress renders as a live bar;
   `--quiet` silences it all.
-- **Packaging:** installer/uninstaller, bash/zsh/fish completions, a man page,
-  and a network-free smoke test suite.
+- **Packaging:** Linux and Termux installer modes, uninstaller,
+  bash/zsh/fish completions, a man page, and a network-free smoke test suite.
 
 ## Requirements
 
@@ -80,6 +86,11 @@ speed limits, and unknown yt-dlp options.
 `vdl` checks what is available at run time: without `aria2c` it downloads
 direct files with yt-dlp, and without `curl_cffi` it skips impersonation.
 
+On Termux, install `aria2`, `ffmpeg`, `python-yt-dlp`, `yt-dlp-ejs`, and a
+yt-dlp JavaScript runtime (`deno`, or `nodejs` on 32-bit). See
+**[docs/TERMUX.md](docs/TERMUX.md)** for the full setup, storage permission,
+wake-lock, and cookie notes.
+
 For a complete walk-through of installation, setup, every feature with
 examples, and uninstallation, see **[docs/USAGE.md](docs/USAGE.md)**.
 
@@ -89,9 +100,13 @@ examples, and uninstallation, see **[docs/USAGE.md](docs/USAGE.md)**.
 ./install.sh                 # ~/.local/bin + completions for detected shells
 ./install.sh --shells bash,zsh,fish
 ./install.sh --system        # /usr/local (run with sudo)
+./install.sh --termux        # $PREFIX (auto-detected inside Termux)
 ./install.sh --no-completions
 ./install.sh --uninstall
 ```
+
+Inside Termux, the installer detects the environment and defaults to
+`$PREFIX` automatically; `--termux` makes that explicit.
 
 If `~/.local/bin` is not on your `PATH`, the installer prints the line to add.
 For zsh, the installer prints the `fpath` line needed before `compinit`.
@@ -108,6 +123,8 @@ vdl -n "https://example.com/file.iso"   # direct file, no cookies
 vdl --no-aria -F "https://example.com/video"
 
 vdl -b firefox:work "https://example.com"
+vdl --cookies cookies.txt "https://example.com"       # manual cookies
+vdl --root-cookies "https://example.com"              # Termux root + Firefox
 vdl --proxy http://127.0.0.1:8080 "https://example.com"
 vdl --dry-run "https://example.com/file.iso"          # preview routing
 vdl --download-dir ~/tmp "https://example.com/file.zip"
@@ -217,7 +234,7 @@ links.
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl` | exact download directory |
+| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl`; Termux: `~/storage/downloads/vdl` | exact download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max height |
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |

@@ -41,6 +41,7 @@ scrape_images() {
         esac
 
         probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+            ${yt_cookie_args[@]+"${yt_cookie_args[@]}"} \
             --print '%(extractor)s|%(playlist_title)s' -- "$u" 2>&1)
         probe_rc=$?
         extractor=${probe_out##*$'\n'}
@@ -77,6 +78,7 @@ scrape_images() {
             [[ $mdir == "${murl#*://*/}" ]] && mdir=''
             [[ -n $mdir ]] && media_dirs+=$mdir$'\n'
         done < <(yt-dlp --ignore-config --quiet --simulate \
+            ${yt_cookie_args[@]+"${yt_cookie_args[@]}"} \
             --print '%(url)s' -- "$u" 2>/dev/null)
 
         curl_args=( -sL --max-time 30 )

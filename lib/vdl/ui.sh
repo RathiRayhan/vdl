@@ -144,8 +144,9 @@ print_banner() {
     if (( ${#batch_files[@]} )); then
         ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi
-    if (( ${#media[@]} )) && [[ $browser != none ]]; then
-        ui_row 'Cookies' "$browser"
+    if [[ -n ${cookie_label:-} ]] \
+        && { (( ${#media[@]} )) || (( direct_via_ytdlp )) || (( ${#img_urls[@]} )); }; then
+        ui_row 'Cookies' "$cookie_label"
     fi
     ui_row 'Save dir' "$display_dir"
     printf '%s===============================================%s\n\n' "$C_CYN" "$C_OFF"

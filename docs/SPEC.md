@@ -10,13 +10,14 @@ editing, refactoring, or asking an AI to modify the project.
 |------|------|
 | `bin/vdl` | Orchestrator: argument parsing, option resolution, pipeline wiring |
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
-| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection |
+| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection/root Firefox cookie staging |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
-| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions |
+| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
 | `test/smoke.sh` | Stub-based CLI tests (no network) |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
+| `docs/TERMUX.md` | Termux setup, storage, cookie, and background guide |
 | `docs/SPEC.md` | This file |
 
 `bin/vdl` sources the libraries from `../lib/vdl` relative to the script, so
@@ -28,11 +29,12 @@ the same relative layout works from the repo and from any install prefix.
    values are kept in order for yt-dlp; URL-shaped tokens and bare `.txt`
    batch files are extracted.  `--` ends vdl option parsing.
 2. **Resolve settings** — precedence: command line > environment > vdl config
-   file > defaults.  Browser, quality, audio mode, and speed limits are
-   validated here.
+   file > defaults.  Browser, cookies file, quality, audio mode, and speed
+   limits are validated here.  `-n` clears both browser and file cookies.
 3. **Collect URLs** — arguments, batch files (lines starting with
    `http://`/`https://`), or the clipboard when none were given; duplicates
-   removed, order preserved.
+   removed, order preserved.  `--root-cookies` is staged after this step, so
+   a usage error never prompts for root.
 4. **Classify** — `url_is_direct` (helpers.sh) implements the single routing
    rule.  See the routing table below.
 5. **Scan for images (opt-in)** — only with `--images`/`VDL_IMAGES=1` and
@@ -72,6 +74,7 @@ The check uses the **last** path extension, so stacked suffixes such as
 - `passthru`: unknown yt-dlp options in original order.
 - Counters: `direct_ok/direct_fail`, `media_ok/media_fail`, `img_ok/img_fail`, `rc`.
 - `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`.
+- `cookies_file`, `root_cookies`, `cookie_label`, `termux_wakelock`.
 
 Libraries may read and update these globals but must not introduce new
 persistent state that bin/vdl does not know about.
@@ -91,6 +94,34 @@ stricter non-zero value when both flags are set.
   URLs are treated as mirrors of one file).
 - Direct files: 16 connections, resume, no preallocation.
 - Embedded images: 4 connections, page URL as referer, browser UA.
+
+## Cookie contract
+
+- `--cookies FILE` / `VDL_COOKIES` / `COOKIES=` adds a yt-dlp `--cookies`
+  argument to every yt-dlp invocation (direct fallback, media, images).
+  A missing file is a usage error (exit 2).
+- `-b/--browser`, `VDL_BROWSER`, and auto-detection keep their existing
+  behavior.  `-n/--no-cookies` clears both browser cookies and file cookies.
+- On Termux, auto-detection returns `none`: Android browser profiles are
+  app-private and desktop paths do not exist.
+- `--root-cookies` / `VDL_ROOT_COOKIES=1|firefox` is Termux-only.  It requires
+  `su` and a Firefox for Android package (`org.mozilla.firefox`,
+  `org.mozilla.firefox_beta`, or `org.mozilla.fenix`), copies the first
+  `cookies.sqlite` into `$XDG_CACHE_HOME/vdl/root-cookies/firefox` with
+  owner-only permissions, and
+  uses `firefox:<staged-dir>`.  Chrome/Chromium/Brave are not supported
+  because their Android cookie values are Keystore-encrypted.
+
+## Termux contract
+
+- `is_termux` is true when `TERMUX_VERSION` is set or `PREFIX` ends in
+  `/com.termux/files/usr`.
+- Default save directory: `$HOME/storage/downloads/vdl` when the Termux
+  storage symlink exists; otherwise `$HOME/Downloads/vdl` with a setup note.
+- When not in `--dry-run` and `VDL_WAKELOCK` is not `0`/`no`, acquire
+  `termux-wake-lock` if available and release it from the EXIT trap.
+- The installer auto-detects Termux and uses `$PREFIX`; `--termux` makes it
+  explicit and `--system` is rejected on Termux.
 
 ## Embedded-image contract (`--images` / `VDL_IMAGES=1`)
 
@@ -136,8 +167,10 @@ stricter non-zero value when both flags are set.
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new
-  flag or routing change needs a case here.
+  flag or routing change needs a case here. Includes manual cookies, Termux
+  save-directory selection, and `--termux` installer coverage.
 - `test/unit.sh` — pure functions (`normalize_speed`, `sanitize_title`,
-  `url_filename`, `url_is_direct`); any new pure helper needs cases here.
+  `url_filename`, `url_is_direct`, `is_termux`); any new pure helper needs
+  cases here.
 - CI runs ShellCheck on `bin/vdl install.sh test/smoke.sh test/unit.sh` and
   every `lib/vdl/*.sh`, then both test suites.

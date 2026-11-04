@@ -23,6 +23,7 @@ export VDL_SAVE_DIR=$tmp/dl
 export FAKE_LOG=$log
 export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
+unset VDL_COOKIES VDL_ROOT_COOKIES VDL_WAKELOCK TERMUX_VERSION PREFIX 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
 for cmd in yt-dlp aria2c ffmpeg wl-paste curl; do
@@ -111,6 +112,21 @@ STUB
     chmod +x "$fakebin/$cmd"
 done
 
+# Fake root helper for the --root-cookies test: report uid 0 and execute the
+# requested shell command locally.
+cat > "$fakebin/su" <<'STUB'
+#!/usr/bin/env bash
+if [[ $1 == -c ]]; then
+    if [[ $2 == 'id -u' ]]; then
+        printf '0\n'
+        exit 0
+    fi
+    exec bash -c "$2"
+fi
+exit 1
+STUB
+chmod +x "$fakebin/su"
+
 pass=0
 fail=0
 
@@ -150,6 +166,68 @@ else
 fi
 if ! arg_has '--cookies-from-browser'; then ok; else bad "-n should disable cookies"; fi
 if ! arg_has '--impersonate'; then ok; else bad "--no-impersonate should be honoured"; fi
+
+# --- manual cookies file ---------------------------------------------------
+printf '# Netscape HTTP Cookie File\n' > "$home/cookies.txt"
+if run --no-impersonate --cookies "$home/cookies.txt" \
+    'https://example.com/watch?v=abc' \
+    && arg_is '--cookies' && arg_is "$home/cookies.txt"; then
+    ok
+else
+    bad "--cookies should pass a cookies.txt file to yt-dlp"
+fi
+
+if run --no-impersonate -b firefox 'https://example.com/watch?v=abc' \
+    && arg_is '--cookies-from-browser' && arg_is firefox; then
+    ok
+else
+    bad "-b should still pass --cookies-from-browser to yt-dlp"
+fi
+
+run --cookies "$home/missing.txt" 'https://example.com/watch?v=abc'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'Cookies file not found' "$err"; then
+    ok
+else
+    bad "a missing --cookies file should exit 2"
+fi
+
+# --- root cookie import is Termux-only -------------------------------------
+run --root-cookies 'https://example.com/watch?v=abc'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'only supported inside Termux' "$err"; then
+    ok
+else
+    bad "--root-cookies should be rejected outside Termux"
+fi
+
+TERMUX_VERSION=termux PATH="$fakebin:/usr/bin:/bin" \
+    bash "$root/bin/vdl" --root-cookies -b chrome --dry-run \
+    'https://example.com/watch?v=x' >"$out" 2>"$err"
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'only supports Firefox' "$err"; then
+    ok
+else
+    bad "--root-cookies should reject non-Firefox browser requests"
+fi
+
+android_root=$tmp/android-data
+android_profile=$android_root/org.mozilla.firefox/files/mozilla/abc.default
+mkdir -p "$android_profile"
+printf 'SQLite format 3\000' > "$android_profile/cookies.sqlite"
+root_cache=$tmp/root-cache
+: > "$out"
+: > "$err"
+if ( TERMUX_VERSION=termux VDL_TERMUX_FIREFOX_ROOT=$android_root \
+        XDG_CACHE_HOME=$root_cache PATH="$fakebin:/usr/bin:/bin" \
+        bash "$root/bin/vdl" --root-cookies --no-impersonate --dry-run \
+        'https://example.com/watch?v=x' >"$out" 2>"$err" ) \
+    && grep -q 'firefox (root)' "$out" \
+    && [[ -s $root_cache/vdl/root-cookies/firefox/cookies.sqlite ]]; then
+    ok
+else
+    bad "--root-cookies should stage Firefox Android cookies via su"
+fi
 
 # --- impersonation must follow yt-dlp's capability list ---------------------
 if run -n 'https://example.com/watch?v=abc' && ! arg_has '--impersonate'; then
@@ -283,6 +361,20 @@ if run -n --dry-run 'https://example.com/file.iso' 'https://example.com/watch?v=
     ok
 else
     bad "--dry-run should print a plan and not invoke downloaders"
+fi
+
+# --- Termux save directory -------------------------------------------------
+termux_home=$tmp/termux-home
+mkdir -p "$termux_home/storage/downloads"
+: > "$out"
+: > "$err"
+if ( unset VDL_SAVE_DIR; HOME=$termux_home TERMUX_VERSION=termux \
+        PATH="$fakebin:/usr/bin:/bin" bash "$root/bin/vdl" --dry-run -n \
+        'https://example.com/file.iso' >"$out" 2>"$err" ) \
+    && grep -q 'storage/downloads/vdl' "$out"; then
+    ok
+else
+    bad "Termux should default to ~/storage/downloads/vdl when storage is set up"
 fi
 
 # --- quiet mode ------------------------------------------------------------
@@ -516,13 +608,15 @@ fi
 # --- config file -----------------------------------------------------------
 confdir=$tmp/cfgtest/.config/vdl
 mkdir -p "$confdir"
-printf 'QUALITY=480\n' > "$confdir/config"
+printf 'QUALITY=480\nCOOKIES=~/cookies.cfg\n' > "$confdir/config"
+printf '# Netscape HTTP Cookie File\n' > "$tmp/cfgtest/cookies.cfg"
 HOME=$tmp/cfgtest XDG_CONFIG_HOME="$tmp/cfgtest/.config" \
-    run -n 'https://example.com/watch?v=abc'
-if arg_has 'height<=480'; then
+    run --no-impersonate 'https://example.com/watch?v=abc'
+if arg_has 'height<=480' \
+    && arg_is '--cookies' && arg_is "$tmp/cfgtest/cookies.cfg"; then
     ok
 else
-    bad "config file should set default quality"
+    bad "config file should set default quality and expand COOKIES=~/..."
 fi
 unset XDG_CONFIG_HOME
 
@@ -551,6 +645,29 @@ if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
     ok
 else
     bad "uninstaller should remove installed files"
+fi
+
+# --- Termux installer ------------------------------------------------------
+termux_prefix=$tmp/termux-prefix
+if TERMUX_VERSION=termux PREFIX=$termux_prefix \
+    PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
+    --termux --shells bash >/dev/null 2>&1 \
+    && [[ -x $termux_prefix/bin/vdl ]] \
+    && [[ -f "$termux_prefix/share/man/man1/vdl.1" ]] \
+    && [[ -f "$termux_prefix/share/bash-completion/completions/vdl" ]]; then
+    ok
+else
+    bad "installer --termux should install under PREFIX"
+fi
+
+if TERMUX_VERSION=termux PREFIX=$termux_prefix \
+    PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
+    --termux --uninstall >/dev/null 2>&1 \
+    && [[ ! -e $termux_prefix/bin/vdl ]] \
+    && [[ ! -e $termux_prefix/share/bash-completion/completions/vdl ]]; then
+    ok
+else
+    bad "Termux uninstaller should remove files under PREFIX"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

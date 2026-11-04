@@ -1,6 +1,6 @@
 # vdl User Guide
 
-`vdl` is a portable smart downloader for Linux. It picks the right engine for
+`vdl` is a portable smart downloader for Linux and Termux. It picks the right engine for
 each URL: direct files go through **aria2c** when it is available, while pages,
 playlists, and streams go through **yt-dlp**. This guide covers installation,
 setup, every feature with examples, and uninstallation.
@@ -38,6 +38,7 @@ cd vdl
 ./install.sh --shells bash,zsh   # limit completions to specific shells
 ./install.sh --no-completions    # command only
 sudo ./install.sh --system       # /usr/local, system-wide
+./install.sh --termux            # $PREFIX (Termux; auto-detected)
 ```
 
 The installer places:
@@ -76,6 +77,60 @@ keep that relative layout (as `install.sh` does).
 Completions are optional; see `completions/` for `vdl.bash` (bash),
 `_vdl` (zsh), and `vdl.fish` (fish).
 
+### Termux
+
+The same code runs on Android. Install the packaged engines, then use the
+Termux installer mode:
+
+```sh
+pkg update
+pkg install git bash coreutils findutils gawk grep sed curl \
+    aria2 python ffmpeg termux-api
+pkg install python-yt-dlp yt-dlp-ejs
+pkg install deno                 # 64-bit ARM/x86_64
+# pkg install nodejs             # 32-bit fallback, then add --js-runtimes node
+
+termux-setup-storage
+git clone https://github.com/rathi/vdl.git
+cd vdl
+./install.sh --termux
+```
+
+`--termux` installs under `$PREFIX` (the standard Termux prefix), not
+`/usr/local`. Running `./install.sh` inside Termux auto-detects this too.
+
+On Termux, the default save directory is `~/storage/downloads/vdl` when
+`termux-setup-storage` has been run. Downloads in Termux's private home are
+not visible to Android's file manager or gallery, so using shared storage is
+recommended. You can override this with `VDL_SAVE_DIR`.
+
+Long downloads can be suspended when Android sleeps. With the `termux-api`
+package and the Termux:API app installed, vdl holds a wake lock automatically
+for the duration of the run; set `VDL_WAKELOCK=0` to disable it. Disabling
+battery optimization for Termux also helps.
+
+Termux notes:
+
+- `ffmpeg` includes libmp3lame, so `-a` MP3 320k extraction and MP4 merging
+  work. Merging 4K video can be slow and heat the phone.
+- `aria2c` supports BitTorrent in Termux, but background execution, carrier
+  filtering, and seeding are less reliable than on a desktop.
+- Browser auto-detection is disabled because Android browser profiles are
+  app-private. Use `--cookies cookies.txt` for a manual cookie file.
+- On a rooted device, `--root-cookies` imports Firefox for Android cookies via
+  `su`. Chrome/Chromium/Brave cookie databases are encrypted with the Android
+  Keystore and are not supported this way; use a `cookies.txt` export.
+- `curl_cffi` ships Android arm64 wheels for current Python versions, so TLS
+  impersonation may work on 64-bit ARM phones after `pip install curl-cffi`.
+  Check with `yt-dlp --list-impersonate-targets`; on other architectures it is
+  skipped automatically.
+- If yt-dlp reports that YouTube needs a JavaScript runtime, install
+  `yt-dlp-ejs` and either Deno (64-bit) or Node (32-bit). Because vdl runs
+  yt-dlp with `--ignore-config`, add `--js-runtimes node` to
+  `~/.config/vdl/yt-dlp.conf` when using Node instead of Deno.
+
+See **[TERMUX.md](TERMUX.md)** for the detailed Termux guide.
+
 ---
 
 ## Setup
@@ -84,11 +139,14 @@ Completions are optional; see `completions/` for `vdl.bash` (bash),
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl` | exact download directory |
+| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl`; Termux: `~/storage/downloads/vdl` | exact download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max video height |
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
+| `VDL_COOKIES` | unset | Netscape cookies.txt file passed to yt-dlp |
+| `VDL_ROOT_COOKIES` | unset | `1` or `firefox` to import Firefox Android cookies via root on Termux |
+| `VDL_WAKELOCK` | `1` | set to `0` to disable the automatic Termux wake lock |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
 | `NO_COLOR` | unset | disable colored output |
@@ -113,6 +171,9 @@ BROWSER=firefox
 SAVE_DIR=~/Downloads/vdl
 IMPERSONATE=chrome
 TMP_KEEP_DAYS=7
+COOKIES=~/cookies.txt
+ROOT_COOKIES=0
+WAKELOCK=1
 ```
 
 ### Extra yt-dlp options
@@ -189,6 +250,20 @@ vdl -n "https://example.com/file.iso"       # no cookies at all
 The browser is auto-detected when `-b` is not given. Supported browsers:
 `vivaldi`, `firefox`, `brave`, `chromium`, `chrome`, `edge`, `opera`,
 `safari`, `whale`, or `none`.
+
+For a browser profile that yt-dlp cannot find automatically, or on Termux
+where Android browser data is app-private, use a Netscape cookie file:
+
+```sh
+vdl --cookies cookies.txt "https://example.com/video"
+VDL_COOKIES=cookies.txt vdl "https://example.com/video"
+```
+
+On rooted Termux, `--root-cookies` copies Firefox for Android's plaintext
+cookie database into Termux and passes it to yt-dlp. Chrome, Chromium, Brave,
+and other Chromium-based Android browsers encrypt their cookie values with the
+Android Keystore, so root alone does not make them readable; export a
+`cookies.txt` file for those browsers.
 
 Cookies apply to yt-dlp requests. Direct aria2c downloads do not receive
 browser cookies; use `--no-aria` for cookie-protected direct links.
@@ -267,6 +342,10 @@ before any download starts.
 vdl --download-dir ~/tmp "https://example.com/file.zip"   # one-off override
 VDL_SAVE_DIR=~/media vdl "https://example.com/video"      # or set the variable
 ```
+
+On Termux, the default is `~/storage/downloads/vdl` when
+`termux-setup-storage` has been run; otherwise it falls back to
+`~/Downloads/vdl` and prints a setup hint.
 
 Naming:
 

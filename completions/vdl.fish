@@ -8,6 +8,8 @@ complete -c vdl -s b -l browser -x \
     -a 'vivaldi firefox brave chromium chrome edge opera safari whale none' \
     -d 'Browser to take cookies from (default: auto-detect)'
 complete -c vdl -s n -l no-cookies -d 'Do not read browser cookies'
+complete -c vdl -l cookies -r -F -d 'Read cookies from a Netscape cookies.txt file'
+complete -c vdl -l root-cookies -d 'Import Firefox Android cookies via su (Termux root only)'
 
 complete -c vdl -s q -l quality -x \
     -a '360 480 720 1080 1440 2160 4320 2k 4k 8k' \

@@ -5,6 +5,7 @@
 # Usage: ./install.sh [options]
 #   --prefix DIR       install prefix (default: ~/.local)
 #   --system           shortcut for --prefix /usr/local
+#   --termux           install under $PREFIX (auto-detected inside Termux)
 #   --shells LIST      comma-separated: bash,zsh,fish (default: auto-detect)
 #   --no-completions   install the command only
 #   --uninstall        remove the command and completions
@@ -14,13 +15,16 @@ set -euo pipefail
 
 script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 prefix=$HOME/.local
+prefix_set=0
 system_install=0
+system_set=0
+termux_install=0
 shells=auto
 install_completions=1
 uninstall=0
 
 usage() {
-    sed -n '2,10p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 while (( $# > 0 )); do
@@ -28,15 +32,22 @@ while (( $# > 0 )); do
         --prefix)
             (( $# > 1 )) || { echo "install.sh: --prefix requires a value" >&2; exit 2; }
             prefix=$2
+            prefix_set=1
             shift 2
             ;;
         --prefix=*)
             prefix=${1#*=}
+            prefix_set=1
             shift
             ;;
         --system)
             prefix=/usr/local
             system_install=1
+            system_set=1
+            shift
+            ;;
+        --termux)
+            termux_install=1
             shift
             ;;
         --shells)
@@ -67,6 +78,35 @@ while (( $# > 0 )); do
     esac
 done
 
+is_termux() {
+    [[ -n ${TERMUX_VERSION:-} ]] || [[ ${PREFIX:-} == */com.termux/files/usr ]]
+}
+
+if (( termux_install && system_set )); then
+    echo "install.sh: --termux and --system are mutually exclusive" >&2
+    exit 2
+fi
+
+if is_termux; then
+    if (( system_set )); then
+        echo "install.sh: --system is not supported on Termux; use --termux" >&2
+        exit 2
+    fi
+    if (( termux_install || ! prefix_set )); then
+        if [[ -z ${PREFIX:-} ]]; then
+            echo "install.sh: PREFIX is not set; run inside Termux or pass --prefix" >&2
+            exit 1
+        fi
+        prefix=$PREFIX
+        termux_install=1
+    fi
+fi
+
+if (( termux_install )) && ! is_termux; then
+    echo "install.sh: --termux requires a Termux environment (PREFIX/TERMUX_VERSION)" >&2
+    exit 2
+fi
+
 prefix=${prefix/#\~/$HOME}
 [[ $prefix == /* ]] || prefix=$PWD/$prefix
 prefix=${prefix%/}
@@ -84,7 +124,7 @@ dst_fish=vdl.fish
 dst_bash=vdl
 dst_zsh=_vdl
 
-if (( system_install )); then
+if (( system_install || termux_install )); then
     fish_dir="$prefix/share/fish/vendor_completions.d"
     bash_dir="$prefix/share/bash-completion/completions"
     zsh_dir="$prefix/share/zsh/site-functions"
