@@ -1,6 +1,6 @@
 # vdl
 
-[![CI](https://github.com/rathi/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/rathi/vdl/actions/workflows/ci.yml)
+[![CI](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A portable smart downloader for Linux: direct files go through **aria2c** when
