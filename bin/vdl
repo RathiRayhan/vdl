@@ -527,6 +527,18 @@ if [[ -n $custom_name ]]; then
         (( ${#direct[@]} == 1 )) || { err "--name works with a single direct file"; exit 2; }
     elif (( ${#media[@]} )); then
         (( ${#media[@]} == 1 )) || { err "--name works with a single media item"; exit 2; }
+        # A playlist URL: NAME becomes the folder name instead of a single
+        # filename.  One light probe tells the two cases apart.
+        if (( ! dry_run )) && have yt-dlp; then
+            pl_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+                --print '%(playlist_count)s' -- "${media[0]}" 2>/dev/null)
+            pl_out=${pl_out##*$'\n'}
+            if [[ $pl_out =~ ^[0-9]+$ ]]; then
+                folder=$(sanitize_title "$custom_name")
+                [[ -n $folder ]] || folder=$custom_name
+                custom_media="${folder}/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s"
+            fi
+        fi
     elif (( ${#img_urls[@]} )); then
         note "--name ignored: this page only yields embedded images"
         custom_name=''

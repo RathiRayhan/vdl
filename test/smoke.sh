@@ -41,6 +41,15 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --list-impersonate-targets "* ]]; then
     exit 0
 fi
 if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
+    if [[ " $* " == *"playlist_count"* ]]; then
+        # --name probe: answer with the playlist item count (NA = single)
+        if [[ ${FAKE_PLAYLIST:-} == yes ]]; then
+            printf '3\n'
+        else
+            printf 'NA\n'
+        fi
+        exit 0
+    fi
     if [[ " $* " == *" -I 1 "* ]]; then
         # vdl's embedded-image probe: answer with the page's extractor name.
         if [[ ${FAKE_GENERIC_PAGE:-} == yes ]]; then
@@ -483,6 +492,16 @@ if [[ $rc -eq 2 ]] && grep -q 'single URL' "$err"; then
     ok
 else
     bad "--name with multiple URLs should exit 2"
+fi
+
+export FAKE_PLAYLIST=yes
+run -n --no-impersonate --name myalb 'https://example.com/watch?v=abc'
+unset FAKE_PLAYLIST
+last_o=$(awk '/^ARG -o$/{getline; val=$0} END{print val}' "$log")
+if [[ $last_o == 'ARG myalb/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s' ]]; then
+    ok
+else
+    bad "--name on a playlist should name the folder (got $last_o)"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------

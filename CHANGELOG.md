@@ -34,8 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are untouched.
 - `--name NAME` flag: saves a single download under a custom filename.  The
   extension is appended when the name lacks one (`-a` audio always uses
-  `.mp3`); a name with an extension is used verbatim.  Requires exactly one
-  URL; embedded images keep their own names.
+  `.mp3`); a name with an extension is used verbatim.  For playlist URLs,
+  NAME becomes the folder name.  Requires exactly one URL; embedded images
+  keep their own names.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - Repository restructured for maintainability: `bin/vdl` is now a thin

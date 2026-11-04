@@ -124,9 +124,12 @@ stricter non-zero value when both flags are set.
   (exit 2).
 - Direct files: `NAME` with the URL's extension appended when NAME has none;
   a NAME containing an extension is used verbatim.
-- Media/audio: appended as the last `-o` to yt-dlp (the last one wins);
-  without an extension the template `NAME.%(ext)s` is used so the real
-  container wins.  Audio mode always uses `.mp3`.
+- Single media/audio item: appended as the last `-o` to yt-dlp (the last one
+  wins); without an extension the template `NAME.%(ext)s` is used so the
+  real container wins.  Audio mode always uses `.mp3`.
+- Playlist URL: a light `%(playlist_count)s` probe detects the playlist and
+  `NAME` becomes the (sanitized) folder name — items inside keep their
+  per-item title template.
 - Embedded images keep their own names; on image-only pages `--name` is
   ignored with a note.
 

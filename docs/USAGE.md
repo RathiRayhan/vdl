@@ -386,8 +386,16 @@ vdl --name "episode 1" "https://example.com/video"      # -> episode 1.mp4
 vdl --name custom.mp4 "https://example.com/video"       # verbatim
 ```
 
+For a **playlist/album URL**, `--name` names the folder instead — every item
+inside keeps its own title:
+
+```sh
+vdl --name my-album "https://example.com/playlist"      # -> my-album/1 - … .mp4
+```
+
 `--name` requires exactly one URL (and that URL must download a single
-file/video; embedded images from `--images` keep their own names).
+file/video or one playlist; embedded images from `--images` keep their own
+names).
 
 ### Interrupting a download
 
