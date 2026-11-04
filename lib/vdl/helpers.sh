@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# shellcheck disable=SC2154  # globals (audio, HOME, ...) live in bin/vdl
+# shellcheck disable=SC2154,SC2329  # globals live in bin/vdl; functions invoked from there
 #
 # vdl helpers: usage, value parsing/normalization, browser detection,
 # clipboard, config file, and the URL classification rule.  Sourced by

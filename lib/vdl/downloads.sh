@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# shellcheck disable=SC2154,SC2034  # globals (direct, save_dir, rc, counters, ...) live in bin/vdl
+# shellcheck disable=SC2154,SC2034,SC2329  # globals live in bin/vdl; functions invoked from there
 #
 # vdl download engines: direct files via aria2c (with yt-dlp fallback),
 # pending direct files via yt-dlp, media/pages via yt-dlp, and the --dedupe

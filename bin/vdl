@@ -443,7 +443,7 @@ trap cleanup_tmp EXIT
 # Ctrl+C: finished items have already been moved to their final folders;
 # only the download in flight stays in the temp dir.  Tell the user how to
 # pick up where they left off instead of dying silently.
-# shellcheck disable=SC2317  # signal handler, invoked via trap
+# shellcheck disable=SC2317,SC2329  # signal handler, invoked via trap
 on_interrupt() {
     trap - INT
     printf '\n'

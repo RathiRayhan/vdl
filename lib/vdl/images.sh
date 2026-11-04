@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# shellcheck disable=SC2154,SC2034  # globals (media, urls, save_dir, rc, ...) live in bin/vdl
+# shellcheck disable=SC2154,SC2034,SC2329  # globals live in bin/vdl; functions invoked from there
 #
 # vdl embedded-image support: scanning album pages and downloading the
 # images found on them, plus the --dedupe post-step.  Sourced by bin/vdl.

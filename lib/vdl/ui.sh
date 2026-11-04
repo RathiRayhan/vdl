@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
-# shellcheck disable=SC2154  # globals (quiet, C_*, ...) live in bin/vdl
+# shellcheck disable=SC2154,SC2329  # globals live in bin/vdl; functions invoked from there
 #
 # vdl UI layer: colors, message helpers, status output, the progress-bar
 # renderer, and the banner/summary printers.  Sourced by bin/vdl.
