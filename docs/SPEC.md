@@ -208,5 +208,8 @@ stricter non-zero value when both flags are set.
   and the python image extractor).  No internet access required.
 - `lib/vdl/scrape.py` — the HTML image extractor for `--images` (python3;
   the bash regex pipeline remains as a fallback when python3 is absent).
+- `test/fixtures/` — anonymized real-world gallery HTML patterns; the
+  integration suite asserts the extractor's exact output for each, so a
+  parser change that breaks a supported site pattern fails CI.
 - CI runs ShellCheck (Ubuntu-packaged version) on `bin/vdl`, `install.sh`,
   the test files, and every `lib/vdl/*.sh`, then all three suites.

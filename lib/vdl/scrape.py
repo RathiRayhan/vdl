@@ -30,8 +30,8 @@ class ImageExtractor(html.parser.HTMLParser):
         if tag != "img":
             return
         attrs = dict(attrs)
-        if "data-rotate-src" in attrs:
-            return
+        # data-rotate-src is the grid thumbnail and is ignored in favor of
+        # the real src/data-src, which may appear on the same tag.
         url = attrs.get("data-src") or attrs.get("src") or ""
         if url.lower().startswith("data:"):
             return

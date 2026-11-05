@@ -1,0 +1,22 @@
+<!-- Fixture: gallery page where photos are single-quoted img tags under
+     /thumb/ with ?v= cache-busters; the full-size image is a same-named
+     .jpg sibling.  Video entries share the album directory and must be
+     skipped as covers; sidebar thumbs live under other hashes and must be
+     excluded by the album scoping.  All URLs anonymized. -->
+<html>
+<head><title>Fixture Album Two</title></head>
+<body>
+<div class="gallery">
+  <img src='https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/0-first.webp?v=1'>
+  <img src='https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/1-second.webp'>
+  <img src='https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/2-third.webp?v=9'>
+  <video src="https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/8-video.mp4"></video>
+  <img src='https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/8-video.webp'>
+</div>
+<div class="sidebar">
+  <img data-src="https://example.com/uploads/2026/02/04/111111111111111/thumb/0-other.webp">
+  <img src="https://example.com/logo.png">
+  <img src="https://example.com/avatar/36x36/user.jpeg">
+</div>
+</body>
+</html>

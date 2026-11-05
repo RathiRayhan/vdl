@@ -167,5 +167,30 @@ check "parser no data"   sh -c "! grep -q 'base64' '$tmp/parser.out'"
 check "parser multiline" grep -qxF 'https://c.example/multi.jpg' "$tmp/parser.out"
 check "parser entity"    grep -qxF 'https://c.example/n&m.webp' "$tmp/parser.out"
 
+# --- 10. real-gallery fixtures through the python parser ----------------------
+# The parser's contract: <img> src/data-src only, data-rotate-src and data:
+# URIs ignored, entities and query strings preserved.  The bash-side album
+# scoping (cover skip, directory match, name filters) is exercised end to
+# end by section 3 above.
+cat > "$tmp/grid.expected" <<'EOF'
+https://cdn.example.com/uploads/2026/01/02/abc123def456/one.jpg?v=1793165468
+https://cdn.example.com/uploads/2026/01/02/abc123def456/three.jpg
+https://cdn.example.com/uploads/2026/01/02/abc123def456/two.jpg?v=1793165470
+EOF
+python3 "$root/lib/vdl/scrape.py" "$root/test/fixtures/album-grid.html" | sort > "$tmp/grid.actual"
+check "grid fixture output" diff -u "$tmp/grid.expected" "$tmp/grid.actual"
+
+cat > "$tmp/thumbs.expected" <<'EOF'
+https://example.com/avatar/36x36/user.jpeg
+https://example.com/logo.png
+https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/0-first.webp?v=1
+https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/1-second.webp
+https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/2-third.webp?v=9
+https://example.com/uploads/2026/02/03/7b91aedc6bfef2cac/thumb/8-video.webp
+https://example.com/uploads/2026/02/04/111111111111111/thumb/0-other.webp
+EOF
+python3 "$root/lib/vdl/scrape.py" "$root/test/fixtures/album-thumbs.html" | sort > "$tmp/thumbs.actual"
+check "thumbs fixture output" diff -u "$tmp/thumbs.expected" "$tmp/thumbs.actual"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1
