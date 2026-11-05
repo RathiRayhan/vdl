@@ -1,4 +1,4 @@
-.claude/
+.opencode/
 *.log
 .DS_Store
 __pycache__/
