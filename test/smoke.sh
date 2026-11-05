@@ -305,7 +305,7 @@ fi
 
 # --- UI output: status lines and summary ------------------------------------
 run -n 'https://example.com/file.iso'
-if grep -q -- '--- Summary ---' "$out" && grep -q '\[ok\]' "$out"; then
+if grep -q -- '--- Summary ---' "$out" && grep -q '✓' "$out"; then
     ok
 else
     bad "non-quiet runs should print per-URL status and a summary"
@@ -321,7 +321,7 @@ fi
 export FAKE_ARIA_FAIL=yes
 run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
 unset FAKE_ARIA_FAIL
-if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out" \
+if grep -q '✗' "$out" && grep -q '✓' "$out" \
     && grep -q 'Failed' "$out" && grep -q 'aria2c failed' "$out"; then
     ok
 else
@@ -329,7 +329,7 @@ else
 fi
 
 run -n 'https://example.com/a.iso' 'https://example.com/b.iso'
-if grep -q '\[Run\] 2/2' "$out"; then
+if grep -q 'Run  2/2' "$out"; then
     ok
 else
     bad "a run-level progress line should appear after the phases"

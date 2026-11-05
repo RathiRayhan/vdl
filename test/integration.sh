@@ -99,7 +99,7 @@ check "item 2 in folder" test -f "$DL/My List/2 - My List (2) [list-2].mp4"
 rm -rf "$DL"
 PATH="$REAL" bash "$root/bin/vdl" -n --no-impersonate --images "$B/alb.html" >"$LOG" 2>&1; rc=$?
 check "images rc" test $rc -eq 0
-vline=$(grep -an '\[ok\].*alb.html' "$LOG" | head -1 | cut -d: -f1)
+vline=$(grep -an '✓.*alb.html' "$LOG" | head -1 | cut -d: -f1)
 sline=$(grep -an "Scanning page" "$LOG" | head -1 | cut -d: -f1)
 if [[ -n $vline && -n $sline ]] && [ "$vline" -lt "$sline" ]; then
     ok

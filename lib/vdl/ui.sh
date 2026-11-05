@@ -41,14 +41,14 @@ ui_item() {
     printf '  %s•%s %s\n' "$C_DIM" "$C_OFF" "$1"
 }
 
-# A per-URL or per-phase result, e.g. "  [ok] file.iso"
+# A per-URL or per-phase result, e.g. "  ✓ file.iso"
 ui_result() {
     local code=$1 label=$2
     (( quiet )) && return 0
     if (( code == 0 )); then
-        printf '  %s[ok]%s   %s\n' "$C_GRN" "$C_OFF" "$label"
+        printf '  %s✓%s  %s\n' "$C_GRN" "$C_OFF" "$label"
     else
-        printf '  %s[fail]%s %s\n' "$C_RED" "$C_OFF" "$label"
+        printf '  %s✗%s  %s\n' "$C_RED" "$C_OFF" "$label"
     fi
 }
 
@@ -68,7 +68,7 @@ ui_name() {
 }
 
 # A run-level progress line, printed after each download phase:
-# "  [Run] 2/3 · 1 failed"
+# "  Run  2/3 · 1 failed"
 ui_run_progress() {
     (( quiet )) && return 0
     local done=$(( direct_ok + direct_fail + media_ok + media_fail + img_ok + img_fail ))
@@ -76,9 +76,9 @@ ui_run_progress() {
     local failed=$(( direct_fail + media_fail + img_fail ))
     (( total )) || return 0
     if (( failed )); then
-        printf '  %s[Run]%s %d/%d · %s%d failed%s\n' "$C_DIM" "$C_OFF" "$done" "$total" "$C_RED" "$failed" "$C_OFF"
+        printf '  %sRun%s  %d/%d · %s%d failed%s\n' "$C_DIM" "$C_OFF" "$done" "$total" "$C_RED" "$failed" "$C_OFF"
     else
-        printf '  %s[Run]%s %d/%d\n' "$C_DIM" "$C_OFF" "$done" "$total"
+        printf '  %sRun%s  %d/%d\n' "$C_DIM" "$C_OFF" "$done" "$total"
     fi
 }
 
