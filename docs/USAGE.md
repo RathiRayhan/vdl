@@ -362,7 +362,8 @@ scoped to the album via the playlist's media URLs: same-directory images are
 kept, video covers and sidebar thumbnails are skipped, and `/thumb/`
 previews upgrade to the full-size image. Favicons, logos, avatars, and UI
 icons are excluded. Photos download with aria2c (browser user-agent + the
-album page as referer) into the album folder next to the videos. A page with
+album page as referer) into the album folder next to the videos, after the
+videos themselves have finished. A page with
 images but no video formats is treated as an image-only album. Known-site
 extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
 network.

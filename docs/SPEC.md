@@ -51,10 +51,10 @@ the repo and from any install prefix.
    progress template, rate limit) and impersonation probing.
 7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
 8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
-   name without `-Z`) with yt-dlp fallback for failed files; embedded
-   images via aria2c per source page (referer + browser UA) with yt-dlp
-   fallback; media via a single yt-dlp invocation (aria2c for HTTP(S),
-   native for HLS/DASH).
+   name without `-Z`) with yt-dlp fallback for failed files; media via a
+   single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
+   embedded images last, via aria2c per source page (referer + browser UA)
+   with yt-dlp fallback, so videos are always downloaded first.
 9. **Finish** — temp cleanup, `--dedupe`, summary, exit.
 
 ## Routing rule (`url_is_direct`)

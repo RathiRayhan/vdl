@@ -275,7 +275,8 @@ For generic or HTML5 album pages, vdl scans for `<img>` links and downloads
 them into the album folder, upgrading `/thumb/` previews to full-size
 images. Favicons, logos, avatars, video covers, and sidebar thumbnails are
 skipped. Known-site extractors such as YouTube are not scanned. This is
-opt-in because it adds page requests.
+opt-in because it adds page requests; images are downloaded after the
+videos.
 
 ### Duplicate cleanup
 
