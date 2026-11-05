@@ -25,7 +25,7 @@ export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste curl; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -87,6 +87,17 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
                 ;;
         esac
     done
+fi
+if [[ ${0##*/} == zip ]]; then
+    # vdl runs: zip -q -r -- TARGET files... — create the archive file.
+    prev=''
+    for a in "$@"; do
+        if [[ $prev == -- ]]; then
+            printf 'PK\003\004' > "$a"
+        fi
+        prev=$a
+    done
+    exit 0
 fi
 if [[ ${0##*/} == curl ]]; then
     outfile=''
@@ -563,6 +574,35 @@ if arg_is 'https://example.com/watch?v=x' && arg_is 'https://example.com/watch?v
     ok
 else
     bad "multi-line paste with flags should download every URL with the flags applied"
+fi
+
+# --- zip archive ------------------------------------------------------------
+export FAKE_ARIA_DUP=yes
+run -n --zip 'https://example.com/zip-a.iso'
+unset FAKE_ARIA_DUP
+if called zip && grep -q 'Archived' "$err" \
+    && ls "$VDL_SAVE_DIR"/vdl-*.zip >/dev/null 2>&1; then
+    ok
+else
+    bad "--zip should archive this run's files with an automatic name"
+fi
+
+export FAKE_ARIA_DUP=yes
+run -n --zip=my-batch.zip 'https://example.com/zip-b.iso'
+unset FAKE_ARIA_DUP
+if called zip && [[ -f $VDL_SAVE_DIR/my-batch.zip ]] \
+    && grep -q 'my-batch.zip' "$err"; then
+    ok
+else
+    bad "--zip=NAME.zip should archive under the given name"
+fi
+
+rm -f "$VDL_SAVE_DIR"/*.iso "$VDL_SAVE_DIR"/*.zip
+run -n --zip 'https://example.com/zip-c.iso'
+if ! called zip && grep -q 'nothing to archive' "$err"; then
+    ok
+else
+    bad "--zip with no downloaded files should skip with a note"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------

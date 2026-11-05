@@ -86,6 +86,10 @@ Exact destination for a single URL.  A PATH whose last component has an
 extension is the exact file; otherwise PATH is the exact folder (playlist
 items go directly inside it).  Cannot be combined with \-\-name.
 .TP
+.B \-\-zip\fR[\fB=\fINAME.zip\fR]
+Archive this run's downloads into a zip in the save directory.  With no
+name, an automatic vdl-<timestamp>.zip is used.  Requires the zip command.
+.TP
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
 .TP

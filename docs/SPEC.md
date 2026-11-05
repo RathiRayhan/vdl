@@ -167,6 +167,19 @@ stricter non-zero value when both flags are set.
 - Same byte size, then identical SHA-256, then delete all but the oldest
   copy.  Pre-existing files can never be deleted.
 
+## Zip contract (`--zip[=NAME.zip]`)
+
+- Runs after dedupe, using the same run window (files with `mtime >=` run
+  start, temp dir and partials excluded).
+- With no name, the archive is `vdl-<YYYYMMDD-HHMMSS>.zip`; an explicit name
+  gets `.zip` appended when missing.  The archive is created in the save
+  directory, with entries relative to it (playlist folders keep their
+  structure).
+- Requires the `zip` command; if missing, a warning is printed and the files
+  are left in place (downloads still succeed).
+- With no files downloaded in the run, a note is printed and no archive is
+  created.
+
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new

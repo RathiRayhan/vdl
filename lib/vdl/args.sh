@@ -27,6 +27,8 @@ max_speed=''
 limit_speed=''
 custom_name=''
 output_arg=''
+zip_mode=0
+zip_name=''
 
 declare -a batch_files=()
 declare -a raw_args=()
@@ -216,6 +218,16 @@ parse_args() {
                 ;;
             --output=*)
                 output_arg=${arg#*=}
+                prev_unknown_flag=0
+                ;;
+            --zip)
+                zip_mode=1
+                zip_name=''
+                prev_unknown_flag=0
+                ;;
+            --zip=*)
+                zip_mode=1
+                zip_name=${arg#*=}
                 prev_unknown_flag=0
                 ;;
             --)

@@ -381,6 +381,22 @@ full content hash — and removes duplicates, always keeping the oldest copy.
 Files that existed before the run and files in `<save_dir>/.tmp` are never
 touched. Opt-in; off by default.
 
+### Archiving to a zip (`--zip`)
+
+After a multi-URL or batch run, pack everything downloaded in that run into
+a single zip in the save directory:
+
+```sh
+vdl --zip url1 url2 url3                       # vdl-20261106-123456.zip
+vdl --zip=my-batch.zip links.txt               # explicit name
+```
+
+The archive contains the run's files and playlist folders (relative to the
+save directory); `.zip` is appended when the given name lacks it. Files from
+earlier runs are never included, and `--dedupe` runs first so duplicates are
+not archived. The `zip` command is required; without it vdl warns and leaves
+the files in place.
+
 ### Interrupting a download
 
 Press Ctrl+C any time. Items that finished are already in their final

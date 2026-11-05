@@ -165,6 +165,7 @@ print_summary() {
     if (( ${#img_urls[@]} )); then
         ui_row 'Images' "$img_ok ok, $img_fail failed"
     fi
+    [[ -n ${zip_created:-} ]] && ui_row 'Archive' "$zip_created"
     if (( SECONDS >= 60 )); then
         ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
     else

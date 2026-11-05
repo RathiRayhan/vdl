@@ -70,6 +70,7 @@ rc=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
 img_ok=0 img_fail=0
 aria_attempted=0
+zip_created=''
 dedupe_mark=$(date +%s)
 
 # 8. Download: direct files, embedded images, media/pages.
@@ -81,6 +82,7 @@ download_media
 # 9. Tidy up, dedupe, summarize.
 cleanup_tmp
 dedupe_saved
+archive_run
 print_summary
 
 exit "$rc"

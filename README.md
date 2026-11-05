@@ -80,6 +80,8 @@ one command the desktop-class pipeline:
   `--images`.
 - **Duplicate cleanup** — opt-in `--dedupe` keeps the oldest copy of
   byte-identical files from the same run.
+- **Zip archiving** — opt-in `--zip[=NAME.zip]` packs a run's downloads into
+  a single archive in the save directory.
 - **Batch input** — read URLs from text files with `-i` or a bare `.txt`
   argument, or paste a multi-line block of URLs directly.
 - **yt-dlp passthrough** — unknown options are forwarded in order with
@@ -284,6 +286,17 @@ After the run, files created by that run are compared by size and SHA-256.
 Identical copies are removed, keeping the oldest. Files that existed before
 the run are never touched.
 
+### Zip archiving
+
+```sh
+vdl --zip url1 url2 url3                   # vdl-<timestamp>.zip
+vdl --zip=my-batch.zip links.txt           # explicit name
+```
+
+Packs everything downloaded in the run into one zip in the save directory
+(playlist folders keep their structure). Runs after `--dedupe`; requires the
+`zip` command.
+
 ### Torrents and magnets
 
 ```sh
@@ -383,6 +396,7 @@ Run `vdl --help` for the complete list. The most useful options:
 | `--download-dir DIR` | Override the save directory |
 | `--name NAME` | Custom filename, or playlist folder name |
 | `--output PATH` | Exact destination: file or folder for a single URL |
+| `--zip[=NAME.zip]` | Archive this run's downloads into a zip |
 | `--no-aria` | Send direct files through yt-dlp |
 | `--no-impersonate` | Disable TLS impersonation |
 | `--images` | Download images embedded in album pages |

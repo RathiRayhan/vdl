@@ -6,6 +6,47 @@
 # pending direct files via yt-dlp, media/pages via yt-dlp, and the --dedupe
 # post-step.  Sourced by bin/vdl.
 
+# With --zip: archive the files downloaded in this run into a single zip in
+# the save directory.  Runs after dedupe so duplicates are not archived.
+archive_run() {
+    (( zip_mode )) || return 0
+
+    have zip || { warn "zip is not installed: skipping --zip archive"; return 0; }
+
+    local -a entries=()
+    local f
+    while IFS= read -r -d '' f; do
+        case ${f##*/} in
+            *.aria2|*.part|*.ytdl|*.temp) continue ;;
+        esac
+        entries+=("$f")
+    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
+        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+
+    if (( ${#entries[@]} == 0 )); then
+        note "--zip: no files were downloaded in this run; nothing to archive"
+        return 0
+    fi
+
+    local target=$zip_name
+    if [[ -z $target ]]; then
+        target="vdl-$(date +%Y%m%d-%H%M%S).zip"
+    elif [[ $target != *.zip ]]; then
+        target=$target.zip
+    fi
+    if [[ $target == */* ]]; then
+        mkdir -p "$save_dir/${target%/*}" || return 0
+    fi
+
+    rm -f -- "$save_dir/$target"
+    if ( cd "$save_dir" && zip -q -r -- "$target" "${entries[@]#"$save_dir"/}" ); then
+        zip_created=$target
+        note "Archived ${#entries[@]} file(s) to ${target}"
+    else
+        warn "zip failed — files were left in place"
+    fi
+}
+
 # With --dedupe: remove files created during this run whose content is
 # identical to another file from the same run.  Only same-size files are
 # hashed, and the oldest copy is always kept, so a file that already existed

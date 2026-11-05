@@ -35,6 +35,7 @@ Options:
       --name NAME          Save a single download under this filename
       --output PATH        Exact destination: file path (with extension) or
                            folder for a single URL
+      --zip[=NAME.zip]     Archive this run's downloads into a zip
       --referer URL        Send this Referer header
       --user-agent UA      Send this User-Agent header
       --proxy URL          Route downloads through this proxy
@@ -73,6 +74,7 @@ Examples:
   vdl --download-dir ~/tmp "https://example.com/file.zip"
   vdl --name my-archive "https://example.com/file.zip"
   vdl --output ~/Videos/movie.mp4 "https://example.com/video"
+  vdl --zip=my-batch.zip url1 url2 url3
   vdl --images "https://example.com/album/abc123"
   vdl magnet:?xt=urn:btih:abc123
 EOF
