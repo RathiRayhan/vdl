@@ -322,7 +322,7 @@ export FAKE_ARIA_FAIL=yes
 run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
 unset FAKE_ARIA_FAIL
 if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out" \
-    && grep -q 'Failed:' "$out" && grep -q 'aria2c failed' "$out"; then
+    && grep -q 'Failed' "$out" && grep -q 'aria2c failed' "$out"; then
     ok
 else
     bad "UI should mark failed downloads separately and recap them in the summary"

@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Stale aria2c partials (`.aria2` + partial, both older than
   `VDL_TMP_KEEP_DAYS`) are now swept automatically on exit.  When aria2c
   fails and yt-dlp is unavailable, the partial is kept for a later resume.
+- The banner and summary now use an aligned label column (no misaligned
+  colons) and the summary lists failures under a red `Failed` heading with
+  breathing room around the verdict.
 - `--images` downloads embedded photos **after** the videos now: the page
   scan itself runs post-download, so media is always finished first.
 - Configuration: `VDL_*` environment variables and a `KEY=VALUE` config

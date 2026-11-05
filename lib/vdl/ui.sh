@@ -29,10 +29,10 @@ ui_section() {
     printf '\n%s--- %s ---%s\n' "$C_CYN" "$*" "$C_OFF"
 }
 
-# Aligned label/value row inside the banner and summary.
+# Aligned label/value row (fixed-width label column, no colons).
 ui_row() {
     (( quiet )) && return 0
-    printf '  %s%-9s%s %s\n' "$C_GRN" "$1:" "$C_OFF" "$2"
+    printf '  %s%-11s%s %s\n' "$C_GRN" "$1" "$C_OFF" "$2"
 }
 
 # A URL/about-to-start line, e.g. "  • file.iso"
@@ -193,7 +193,7 @@ print_summary() {
     fi
     ui_row 'Save dir' "$display_dir"
     if (( ${#failed_items[@]} )); then
-        printf '  %sFailed:%s\n' "$C_RED" "$C_OFF"
+        (( quiet )) || printf '\n  %sFailed%s\n' "$C_RED" "$C_OFF"
         local item u r
         for item in "${failed_items[@]}"; do
             u=${item%%|*}
@@ -201,9 +201,11 @@ print_summary() {
             ui_result 1 "$u — $r"
         done
     fi
+    (( quiet )) || printf '\n'
     if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
         ui_result 0 "all downloads finished"
     else
         ui_result 1 "some downloads failed"
     fi
+    (( quiet )) || printf '\n'
 }
