@@ -44,9 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - Repository restructured for maintainability: `bin/vdl` is now a thin
-  orchestrator that sources focused libraries (`lib/vdl/ui.sh`,
-  `helpers.sh`, `images.sh`, `downloads.sh`), `docs/SPEC.md` documents the
-  behavior contract, and `test/unit.sh` unit-tests the pure helpers.
+  orchestrator that sources focused libraries (`lib/vdl/ui.sh`, `helpers.sh`,
+  `images.sh`, `downloads.sh`, `args.sh`, `settings.sh`, `collect.sh`,
+  `paths.sh`, `classify.sh`, `ytdlp.sh`, `plan.sh`), `docs/SPEC.md` documents
+  the behavior contract, and `test/unit.sh` unit-tests the pure helpers.
   `install.sh` installs the libraries alongside the script.
 - `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)
   without invoking yt-dlp or aria2c.

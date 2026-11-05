@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+# shellcheck disable=SC2034,SC2154,SC2329  # globals live in bin/vdl or the libs
+#
+# vdl URL collection: positional URLs, batch files, clipboard fallback,
+# order-preserving dedupe, and the single-URL checks for --name/--output.
+
+collect_urls() {
+    urls=()
+
+    # raw_args preserves the original argument order.  Non-URL tokens,
+    # including values belonging to unknown yt-dlp options, stay in passthru
+    # in that order; only URL-shaped tokens and bare batch files are pulled
+    # out.
+    local i arg line
+    for i in "${!raw_args[@]}"; do
+        arg=${raw_args[$i]}
+        case $arg in
+            http://*|https://*)
+                urls+=("$arg")
+                ;;
+            www.*)
+                urls+=("https://$arg")
+                ;;
+            magnet:*)
+                urls+=("$arg")
+                ;;
+            *.txt)
+                # A bare .txt is a batch file unless it is the value of an
+                # unknown flag (e.g. --download-archive archive.txt).
+                if [[ ${raw_kind[$i]} == pos && -f $arg ]]; then
+                    batch_files+=("$arg")
+                else
+                    passthru+=("$arg")
+                fi
+                ;;
+            *)
+                passthru+=("$arg")
+                ;;
+        esac
+    done
+
+    if (( ${#batch_files[@]} )); then
+        local f
+        for f in "${batch_files[@]}"; do
+            if [[ ! -f $f ]]; then
+                warn "Batch file not found: $f"
+                continue
+            fi
+            while IFS= read -r line || [[ -n $line ]]; do
+                line=${line%$'\r'}
+                line=${line#"${line%%[![:space:]]*}"}
+                line=${line%"${line##*[![:space:]]}"}
+                if [[ $line =~ ^https?:// ]]; then
+                    urls+=("$line")
+                fi
+            done < "$f"
+        done
+    fi
+
+    if (( ${#urls[@]} == 0 )); then
+        local clip
+        if clip=$(read_clipboard) && [[ $clip =~ ^https?:// ]]; then
+            urls+=("$clip")
+            note "Auto-grabbed URL from clipboard"
+        else
+            err "No valid URL, batch file, or clipboard link found."
+            printf '    Run vdl --help for usage.\n' >&2
+            exit 1
+        fi
+    fi
+
+    # Remove duplicates while preserving order.
+    declare -A seen=()
+    declare -a uniq_urls=()
+    for u in "${urls[@]}"; do
+        [[ -n ${seen[$u]:-} ]] && continue
+        seen[$u]=1
+        uniq_urls+=("$u")
+    done
+    urls=("${uniq_urls[@]}")
+
+    # --name applies to a single URL; remember it before images are appended.
+    named_url=''
+    if [[ -n $custom_name ]]; then
+        if (( ${#urls[@]} != 1 )); then
+            err "--name works with a single URL"
+            exit 2
+        fi
+        named_url=${urls[0]}
+    fi
+
+    # --output is the exact destination for a single URL.
+    if [[ -n $output_arg ]]; then
+        (( ${#urls[@]} == 1 )) || { err "--output works with a single URL"; exit 2; }
+        [[ -z $custom_name ]] || { err "--output cannot be combined with --name"; exit 2; }
+    fi
+}

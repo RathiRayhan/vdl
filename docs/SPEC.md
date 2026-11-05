@@ -8,11 +8,18 @@ editing, refactoring, or asking an AI to modify the project.
 
 | Path | Role |
 |------|------|
-| `bin/vdl` | Orchestrator: argument parsing, option resolution, pipeline wiring |
+| `bin/vdl` | Orchestrator: sources the libraries and runs the pipeline in order |
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
 | `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
+| `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
+| `lib/vdl/settings.sh` | Browser/quality/speed resolution (`resolve_settings`) |
+| `lib/vdl/collect.sh` | URL collection, dedupe, `--name`/`--output` validation (`collect_urls`) |
+| `lib/vdl/paths.sh` | Save dir, temp dir, traps, `--output` repointing (`setup_paths`) |
+| `lib/vdl/classify.sh` | Direct/media split, image scan, name resolution, tool checks (`classify_urls`) |
+| `lib/vdl/ytdlp.sh` | yt-dlp defaults and impersonation (`build_yt_common`) |
+| `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
 | `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions |
 | `test/smoke.sh` | Stub-based CLI tests (no network) |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |

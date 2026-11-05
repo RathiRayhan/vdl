@@ -364,7 +364,8 @@ not slowed down.
 
 ```
 bin/vdl               the command (orchestrator)
-lib/vdl/              sourced libraries: ui, helpers, images, downloads
+lib/vdl/              sourced libraries (ui, helpers, images, downloads,
+                      args, settings, collect, paths, classify, ytdlp, plan)
 install.sh            installer / uninstaller
 completions/          bash, zsh and fish completions
 man/vdl.1             man page
