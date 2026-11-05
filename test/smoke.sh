@@ -548,6 +548,23 @@ else
     bad "--output with --name should exit 2"
 fi
 
+# --- multi-line URL paste ---------------------------------------------------
+run -n $'https://example.com/a.iso\nhttps://example.com/b.iso\n\n'
+if arg_is 'https://example.com/a.iso' && arg_is 'https://example.com/b.iso' \
+    && called aria2c; then
+    ok
+else
+    bad "a pasted multi-line argument should be split into URLs"
+fi
+
+run -n -q 720 $'https://example.com/watch?v=x\n# not a url\nhttps://example.com/watch?v=y'
+if arg_is 'https://example.com/watch?v=x' && arg_is 'https://example.com/watch?v=y' \
+    && arg_has 'height<=720' && ! arg_has '# not a url'; then
+    ok
+else
+    bad "multi-line paste with flags should download every URL with the flags applied"
+fi
+
 # --- aria-opts forwarding --------------------------------------------------
 run -n --aria-opts '--check-interval=30 --max-connection-per-server=4' \
     'https://example.com/file.iso'

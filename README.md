@@ -101,6 +101,9 @@ For zsh, the installer prints the `fpath` line needed before `compinit`.
 ```sh
 vdl                                     # URL from the clipboard
 vdl "https://example.com/video"
+vdl "https://example.com/a" "https://example.com/b"   # multiple URLs
+vdl 'https://example.com/one
+https://example.com/two'                # or paste a URL block
 vdl links.txt                           # every URL listed in links.txt
 vdl -q 720 links.txt
 vdl -a "https://example.com/album"      # MP3 320k

@@ -144,9 +144,20 @@ vdl                                    # URL from the clipboard
 vdl www.example.com/video              # "www." is normalized to https://
 ```
 
-Any number of URLs can be given in one run. vdl classifies each one and uses
-aria2c for direct files and yt-dlp for everything else, all in the same
-invocation. Duplicate URLs are removed while preserving order.
+Any number of URLs can be given in one run — space-separated or **pasted as
+one multi-line block** (blank lines and non-URL lines in a paste are
+ignored):
+
+```sh
+vdl 'https://example.com/one
+https://example.com/two
+https://example.com/three'
+```
+
+All flags apply to every URL in the run: `vdl -q 720 -n url1 url2 url3`.
+vdl classifies each URL and uses aria2c for direct files and yt-dlp for
+everything else, all in the same invocation. Duplicate URLs are removed
+while preserving order.
 
 ### Batch files
 

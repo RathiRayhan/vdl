@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   path when the last component has an extension, otherwise an exact folder
   (playlist items land directly inside it).  Cannot be combined with
   `--name`.
+- Multi-line URL paste: a positional argument containing newlines is split
+  into one URL per line, so pasted URL blocks work like a batch file
+  (blank and non-URL lines are ignored).  All flags apply to every URL in
+  the run.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - Repository restructured for maintainability: `bin/vdl` is now a thin

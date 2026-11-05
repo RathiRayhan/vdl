@@ -37,9 +37,10 @@ the same relative layout works from the repo and from any install prefix.
 2. **Resolve settings** — precedence: command line > environment > vdl config
    file > defaults.  Browser, quality, audio mode, and speed limits are
    validated here.
-3. **Collect URLs** — arguments, batch files (lines starting with
-   `http://`/`https://`), or the clipboard when none were given; duplicates
-   removed, order preserved.
+3. **Collect URLs** — arguments (including multi-line pasted blocks, split
+   one URL per line; blank and non-URL lines in a paste are ignored), batch
+   files (lines starting with `http://`/`https://`), or the clipboard when
+   none were given; duplicates removed, order preserved.
 4. **Classify** — `url_is_direct` (helpers.sh) implements the single routing
    rule.  See the routing table below.
 5. **Scan for images (opt-in)** — only with `--images`/`VDL_IMAGES=1` and
