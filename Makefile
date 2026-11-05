@@ -7,6 +7,11 @@ test:
 	bash test/smoke.sh
 	bash test/unit.sh
 
+## Run the integration suite against the real yt-dlp/aria2c/ffmpeg
+## (local HTTP fixture, no internet; needs python3, yt-dlp, aria2c, ffmpeg)
+test-integration:
+	bash test/integration.sh
+
 ## Lint all shell scripts with shellcheck
 lint:
 	@command -v shellcheck >/dev/null 2>&1 || { \

@@ -36,3 +36,20 @@ jobs:
       - name: Unit tests
         run: |
           bash test/unit.sh
+
+  integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install real tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2 ffmpeg zip
+          python3 -m pip install -U yt-dlp
+
+      - name: Integration tests
+        run: |
+          bash test/integration.sh

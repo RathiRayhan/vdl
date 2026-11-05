@@ -202,5 +202,11 @@ stricter non-zero value when both flags are set.
 - `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
   `sanitize_title`, `url_filename`, `url_is_direct`); any new pure helper
   needs cases here.
+- `test/integration.sh` — drives the REAL yt-dlp/aria2c/ffmpeg against a
+  local HTTP fixture (multi-direct, playlists, `--images` ordering,
+  image-only albums, fallback, `--name`/`--output`, `--zip`, pasted blocks,
+  and the python image extractor).  No internet access required.
+- `lib/vdl/scrape.py` — the HTML image extractor for `--images` (python3;
+  the bash regex pipeline remains as a fallback when python3 is absent).
 - CI runs ShellCheck (Ubuntu-packaged version) on `bin/vdl`, `install.sh`,
-  both test files, and every `lib/vdl/*.sh`, then both suites.
+  the test files, and every `lib/vdl/*.sh`, then all three suites.

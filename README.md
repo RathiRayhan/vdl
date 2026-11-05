@@ -554,13 +554,16 @@ test/unit.sh          pure helper tests
 Run the checks:
 
 ```sh
-make test     # smoke + unit tests
-make lint     # ShellCheck
+make test                # smoke + unit suites
+make test-integration    # real yt-dlp/aria2c/ffmpeg, local fixture, no internet
+make lint                # shellcheck all scripts
 ```
 
-The smoke suite stubs the downloaders and needs no network access. CI runs
-ShellCheck plus both suites on every push to `main`. Contributions are
-welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and style
+The smoke suite stubs the downloaders and needs no network access. The
+integration suite serves a local fixture and drives the real downloaders
+end to end. CI runs ShellCheck, smoke, unit, and integration on every push
+to `main`. Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md)
+for the workflow and style
 rules.
 
 ## Uninstall

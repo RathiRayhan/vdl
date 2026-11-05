@@ -35,6 +35,8 @@ make lint            # needs shellcheck on PATH
 | `docs/SPEC.md` | Behavior contract |
 | `test/smoke.sh` | Stub-based end-to-end CLI tests |
 | `test/unit.sh` | Unit tests for pure helpers |
+| `test/integration.sh` | End-to-end tests against the real yt-dlp/aria2c/ffmpeg on a local fixture |
+| `lib/vdl/scrape.py` | HTML image extractor used by `--images` (python3; regex fallback included) |
 
 ## Making a change
 
@@ -53,7 +55,8 @@ make lint            # needs shellcheck on PATH
 5. **Run everything.**
 
 ```sh
-make test
+make test               # smoke + unit
+make test-integration   # real downloaders, local fixture (needs yt-dlp, aria2c, ffmpeg)
 make lint
 ```
 

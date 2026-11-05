@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-08
+
+### Added
+
+- `--output PATH`: pins a single URL to an exact file path or folder.
+- `--zip[=NAME.zip]`: archives a run's downloads into a single zip in the
+  save directory (runs after `--dedupe`; requires the `zip` command).
+- Multi-line URL paste: pasted blocks are split into one URL per line.
+- Run-level `[Run] n/m` progress counter, a `Failed:` recap with per-URL
+  reasons in the summary, a scanning indicator during `--images`, and a
+  terminal-width-adaptive progress bar.
+- Integration test suite (`test/integration.sh`) that drives the real
+  yt-dlp/aria2c/ffmpeg against a local fixture, wired into CI.
+- A python3 HTML image extractor (`lib/vdl/scrape.py`) for `--images`,
+  replacing the fragile regex pipeline when python3 is available.
+
+### Changed
+
+- `--images` scans pages only after the media downloads finish, so videos
+  always complete first (a light preflight still drops image-only pages
+  from the media queue early).
+- CI runs ShellCheck, smoke, unit, and integration suites.
+
 ## [2.0.0] - 2026-11-06
 
 ### Added
