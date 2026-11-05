@@ -89,13 +89,12 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
     done
 fi
 if [[ ${0##*/} == zip ]]; then
-    # vdl runs: zip -q -r -- TARGET files... — create the archive file.
-    prev=''
+    # vdl runs: zip -q -r TARGET files... — create the archive file.
     for a in "$@"; do
-        if [[ $prev == -- ]]; then
+        if [[ $a != -* ]]; then
             printf 'PK\003\004' > "$a"
+            break
         fi
-        prev=$a
     done
     exit 0
 fi

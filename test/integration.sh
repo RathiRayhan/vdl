@@ -57,11 +57,15 @@ mkdir -p "$tmp/zipbin"
 if ! command -v zip >/dev/null 2>&1; then
     cat > "$tmp/zipbin/zip" <<'EOF'
 #!/usr/bin/env bash
-seen=0; declare -a rest=()
+# vdl runs: zip -q -r TARGET files...
+declare -a rest=()
+target=''
 for a in "$@"; do
-    if [[ $seen == 1 ]]; then rest+=("$a"); elif [[ $a == -- ]]; then seen=1; fi
+    if [[ $a != -* ]]; then
+        if [[ -z $target ]]; then target=$a; else rest+=("$a"); fi
+    fi
 done
-python3 -m zipfile -c "${rest[0]}" "${rest[@]:1}"
+python3 -m zipfile -c "$target" "${rest[@]}"
 EOF
     chmod +x "$tmp/zipbin/zip"
 fi

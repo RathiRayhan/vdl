@@ -39,7 +39,7 @@ archive_run() {
     fi
 
     rm -f -- "$save_dir/$target"
-    if ( cd "$save_dir" && zip -q -r -- "$target" "${entries[@]#"$save_dir"/}" ); then
+    if ( cd "$save_dir" && zip -q -r "$target" "${entries[@]#"$save_dir"/}" ); then
         zip_created=$target
         note "Archived ${#entries[@]} file(s) to ${target}"
     else
