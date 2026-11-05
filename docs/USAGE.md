@@ -367,7 +367,8 @@ page is only **scanned after the videos have finished**, so media always
 comes first. A page with
 images but no video formats is treated as an image-only album. Known-site
 extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
-network.
+network. Everyday uses: photo galleries, manga chapters, product photos,
+and teardown guides — anywhere images live in plain HTML.
 
 ### Removing duplicate downloads (`--dedupe`)
 

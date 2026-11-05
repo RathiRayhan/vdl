@@ -276,7 +276,9 @@ them into the album folder, upgrading `/thumb/` previews to full-size
 images. Favicons, logos, avatars, video covers, and sidebar thumbnails are
 skipped. Known-site extractors such as YouTube are not scanned. This is
 opt-in because it adds page requests; images are downloaded after the
-videos.
+videos. It comes in handy for photo galleries, manga chapters, product
+photos, and teardown guides — anywhere a site serves its images as plain
+HTML.
 
 ### Duplicate cleanup
 

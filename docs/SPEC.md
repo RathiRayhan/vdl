@@ -10,20 +10,21 @@ editing, refactoring, or asking an AI to modify the project.
 |------|------|
 | `bin/vdl` | Orchestrator: sources the libraries and runs the pipeline in order |
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
-| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection |
+| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection and root Firefox cookie staging |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
 | `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
-| `lib/vdl/settings.sh` | Browser/quality/speed resolution (`resolve_settings`) |
-| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, `--name`/`--output` validation (`collect_urls`) |
-| `lib/vdl/paths.sh` | Save dir, temp dir, traps, `--output` repointing (`setup_paths`) |
+| `lib/vdl/settings.sh` | Browser/cookie/quality/speed resolution (`resolve_settings`, `build_cookie_args`) |
+| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, root cookie staging, `--name`/`--output` validation (`collect_urls`) |
+| `lib/vdl/paths.sh` | Save dir, temp dir, traps, Termux wake lock, `--output` repointing (`setup_paths`) |
 | `lib/vdl/classify.sh` | Direct/media split, image scan, name resolution, tool checks (`classify_urls`) |
-| `lib/vdl/ytdlp.sh` | yt-dlp defaults and impersonation (`build_yt_common`) |
+| `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
-| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions |
+| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
 | `test/smoke.sh` | Stub-based CLI tests (no network) |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
+| `docs/TERMUX.md` | Detailed Termux setup, storage, cookie, and background guide |
 | `docs/SPEC.md` | This file |
 
 `bin/vdl` sources the libraries from `../lib/vdl` relative to the real
@@ -36,27 +37,31 @@ the repo and from any install prefix.
    values are kept in order for yt-dlp; URL-shaped tokens and bare `.txt`
    batch files are extracted.  `--` ends vdl option parsing.
 2. **Resolve settings** — precedence: command line > environment > vdl
-   config file > defaults.  Browser, quality, audio mode, and speed limits
-   are validated here.
+   config file > defaults.  Browser, cookies file, quality, audio mode, and
+   speed limits are validated here.  `-n` clears browser and file cookies.
 3. **Collect URLs** — arguments (multi-line pasted blocks are split into
    one URL per line; blank and non-URL lines in a paste are ignored), batch
    files (lines starting with `http://`/`https://`), or the clipboard when
-   none were given; duplicates removed, order preserved.
-4. **Set up paths** — save dir, temp dir (`<save_dir>/.tmp`), EXIT/INT
-   traps, and the `--output` repointing.
+   none were given; duplicates removed, order preserved.  On Termux,
+   `--root-cookies` is staged after URL validation, so a usage error never
+   prompts for root.
+4. **Set up paths** — save dir (Termux shared storage when available), temp
+   dir (`<save_dir>/.tmp`), EXIT/INT traps, optional Termux wake lock, and
+   the `--output` repointing.
 5. **Classify** — `url_is_direct` implements the routing rule; `--name`/
    `--output` are resolved; yt-dlp/ffmpeg requirements are checked.  With
    `--images`, a light preflight probes each media page's extractor so
    image-only pages can be dropped from the media queue early.
 6. **Build yt-dlp defaults** — `yt_common` (ignore-config, retries,
-   progress template, rate limit) and impersonation probing.
+   progress template, rate limit, browser/file cookies) and impersonation
+   probing.
 7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
 8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
    name without `-Z`) with yt-dlp fallback for failed files; media via a
    single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
    **then**, with `--images`, the pages are scanned for images and the
    photos are downloaded, so videos always finish first.
-9. **Finish** — temp cleanup, `--dedupe`, summary, exit.
+9. **Finish** — temp cleanup, `--dedupe`, `--zip`, summary, exit.
 
 ## Routing rule (`url_is_direct`)
 
@@ -86,9 +91,14 @@ The check uses the **last** path extension, so stacked suffixes such as
 - Counters: `direct_ok/direct_fail`, `media_ok/media_fail`, `img_ok/img_fail`, `rc`.
 - `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`,
   `custom_direct`, `custom_media`, `out_folder_strip`.
+- `cookies_file`, `root_cookies`, `cookie_label`, `yt_cookie_args`,
+  `termux_wakelock`.
+- `scan_pages`, `scan_do`, `scan_title`, `failed_items`, `zip_created`,
+  `zip_mode`, `zip_name`.
 
-Libraries may read and update these globals but must not introduce new
-persistent state that `bin/vdl` does not declare.
+Libraries may read and update these globals.  Phase-local state belongs to
+the library that owns it (for example, cookie state is built in
+`lib/vdl/settings.sh`).
 
 ## Backend mappings
 
