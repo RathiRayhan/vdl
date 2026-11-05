@@ -378,6 +378,10 @@ yt-dlp component, not part of vdl; see the
 
 ## Cookies
 
+On Termux, the default is **no cookies**: Android browser profiles are
+app-private, so automatic browser detection is disabled. Use `--cookies FILE`
+for a manual file or `--root-cookies` for a rooted Firefox import.
+
 Cookies apply to yt-dlp requests, including media pages and direct-file
 fallback downloads. They do not apply to aria2c, so use `--no-aria` for a
 cookie-protected direct link.

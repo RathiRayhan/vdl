@@ -203,6 +203,23 @@ else
     bad "-b should still pass --cookies-from-browser to yt-dlp"
 fi
 
+# --- Termux defaults to no cookies -----------------------------------------
+if TERMUX_VERSION=termux run --no-impersonate \
+    'https://example.com/watch?v=abc' \
+    && ! arg_has '--cookies-from-browser' && ! arg_has '--cookies'; then
+    ok
+else
+    bad "Termux should not use browser cookies by default"
+fi
+
+if TERMUX_VERSION=termux run --no-impersonate --cookies "$home/cookies.txt" \
+    'https://example.com/watch?v=abc' \
+    && arg_is '--cookies' && ! arg_has '--cookies-from-browser'; then
+    ok
+else
+    bad "Termux default should allow manual cookies without browser cookies"
+fi
+
 run --cookies "$home/missing.txt" 'https://example.com/watch?v=abc'
 rc=$?
 if [[ $rc -eq 2 ]] && grep -q 'Cookies file not found' "$err"; then

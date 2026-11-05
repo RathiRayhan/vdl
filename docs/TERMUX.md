@@ -98,6 +98,10 @@ contains characters the card rejects.
 
 ## Cookies
 
+The default is **no cookies**. Automatic browser detection is disabled on
+Termux because Android browser profiles are app-private. Choose manual cookies
+or the root-only Firefox import when needed.
+
 ### Non-root: manual cookies.txt
 
 Termux cannot read Android Chrome/Firefox app-private profiles, so automatic

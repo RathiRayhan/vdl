@@ -208,6 +208,10 @@ thumbnail embedding. Files land in `<save_dir>/audio`.
 
 ### Browser cookies
 
+On Termux the default is **no cookies**; automatic browser detection is
+disabled because Android browser profiles are app-private. Use `--cookies` or
+`--root-cookies` explicitly.
+
 ```sh
 vdl -b firefox "https://example.com"
 vdl -b firefox:work "https://example.com"   # specific profile
