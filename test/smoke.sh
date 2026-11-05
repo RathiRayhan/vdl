@@ -26,7 +26,7 @@ unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY
 unset VDL_COOKIES VDL_ROOT_COOKIES VDL_WAKELOCK TERMUX_VERSION PREFIX 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste curl; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -88,6 +88,17 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
                 ;;
         esac
     done
+fi
+if [[ ${0##*/} == zip ]]; then
+    # vdl runs: zip -q -r -- TARGET files... — create the archive file.
+    prev=''
+    for a in "$@"; do
+        if [[ $prev == -- ]]; then
+            printf 'PK\003\004' > "$a"
+        fi
+        prev=$a
+    done
+    exit 0
 fi
 if [[ ${0##*/} == curl ]]; then
     outfile=''
@@ -403,10 +414,18 @@ fi
 export FAKE_ARIA_FAIL=yes
 run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
 unset FAKE_ARIA_FAIL
-if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out"; then
+if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out" \
+    && grep -q 'Failed:' "$out" && grep -q 'aria2c failed' "$out"; then
     ok
 else
-    bad "UI should mark failed downloads separately from retried ones"
+    bad "UI should mark failed downloads separately and recap them in the summary"
+fi
+
+run -n 'https://example.com/a.iso' 'https://example.com/b.iso'
+if grep -q '\[Run\] 2/2' "$out"; then
+    ok
+else
+    bad "a run-level progress line should appear after the phases"
 fi
 
 # --- embedded images on generic pages --------------------------------------
@@ -419,6 +438,7 @@ if arg_is 'https://cdn.example.com/album/pic1.jpg' \
     && ! arg_has 'avatar' && ! arg_has 'grid1' \
     && ! arg_has 'video1' && ! arg_has 'side' \
     && arg_is '-Z' && arg_is "$VDL_SAVE_DIR/Test Album" \
+    && grep -q 'Scanning page' "$err" \
     && called aria2c; then
     ok
 else
@@ -605,6 +625,96 @@ if [[ $last_o == 'ARG myalb/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext
     ok
 else
     bad "--name on a playlist should name the folder (got $last_o)"
+fi
+
+# --- exact output path ------------------------------------------------------
+outdir=$tmp/customout
+run -n --output "$outdir/movie.mp4" 'https://example.com/file.iso'
+if called aria2c && arg_is -d && arg_is "$outdir" && arg_is 'movie.mp4'; then
+    ok
+else
+    bad "--output with an extension should name the exact file"
+fi
+
+run -n --no-impersonate --output "$outdir/vid.mp4" 'https://example.com/watch?v=abc'
+last_o=$(awk '/^ARG -o$/{getline; val=$0} END{print val}' "$log")
+if [[ $last_o == 'ARG vid.mp4' ]] && arg_has "$outdir"; then
+    ok
+else
+    bad "--output with an extension should target the exact media file (got $last_o)"
+fi
+
+export FAKE_PLAYLIST=yes
+run -n --no-impersonate --output "$outdir/myalb" 'https://example.com/watch?v=abc'
+unset FAKE_PLAYLIST
+last_o=$(awk '/^ARG -o$/{getline; val=$0} END{print val}' "$log")
+if [[ $last_o == 'ARG %(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s' ]] \
+    && arg_has "$outdir/myalb"; then
+    ok
+else
+    bad "--output folder should hold playlist items directly (got $last_o)"
+fi
+
+run -n --output x 'https://example.com/a.iso' 'https://example.com/b.iso'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'single URL' "$err"; then
+    ok
+else
+    bad "--output with multiple URLs should exit 2"
+fi
+
+run -n --output x.iso --name y 'https://example.com/a.iso'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'cannot be combined' "$err"; then
+    ok
+else
+    bad "--output with --name should exit 2"
+fi
+
+# --- multi-line URL paste ---------------------------------------------------
+run -n $'https://example.com/a.iso\nhttps://example.com/b.iso\n\n'
+if arg_is 'https://example.com/a.iso' && arg_is 'https://example.com/b.iso' \
+    && called aria2c; then
+    ok
+else
+    bad "a pasted multi-line argument should be split into URLs"
+fi
+
+run -n -q 720 $'https://example.com/watch?v=x\n# not a url\nhttps://example.com/watch?v=y'
+if arg_is 'https://example.com/watch?v=x' && arg_is 'https://example.com/watch?v=y' \
+    && arg_has 'height<=720' && ! arg_has '# not a url'; then
+    ok
+else
+    bad "multi-line paste with flags should download every URL with the flags applied"
+fi
+
+# --- zip archive ------------------------------------------------------------
+export FAKE_ARIA_DUP=yes
+run -n --zip 'https://example.com/zip-a.iso'
+unset FAKE_ARIA_DUP
+if called zip && grep -q 'Archived' "$err" \
+    && ls "$VDL_SAVE_DIR"/vdl-*.zip >/dev/null 2>&1; then
+    ok
+else
+    bad "--zip should archive this run's files with an automatic name"
+fi
+
+export FAKE_ARIA_DUP=yes
+run -n --zip=my-batch.zip 'https://example.com/zip-b.iso'
+unset FAKE_ARIA_DUP
+if called zip && [[ -f $VDL_SAVE_DIR/my-batch.zip ]] \
+    && grep -q 'my-batch.zip' "$err"; then
+    ok
+else
+    bad "--zip=NAME.zip should archive under the given name"
+fi
+
+rm -f "$VDL_SAVE_DIR"/*.iso "$VDL_SAVE_DIR"/*.zip
+run -n --zip 'https://example.com/zip-c.iso'
+if ! called zip && grep -q 'nothing to archive' "$err"; then
+    ok
+else
+    bad "--zip with no downloaded files should skip with a note"
 fi
 
 # --- aria-opts forwarding --------------------------------------------------

@@ -13,7 +13,7 @@ Install the packages from Termux:
 
 ```sh
 pkg update
-pkg install git bash coreutils findutils gawk grep sed curl \
+pkg install git bash coreutils findutils gawk grep sed curl zip \
     aria2 python ffmpeg termux-api
 pkg install python-yt-dlp yt-dlp-ejs
 ```
@@ -158,6 +158,34 @@ Termux runs as its own UID and yt-dlp's browser paths are desktop paths. Use
 
 Cookies only apply to yt-dlp paths. For a cookie-protected direct link, add
 `--no-aria` so yt-dlp downloads the file instead of aria2c.
+
+## Destinations, archives, and pasted URLs
+
+Pin a single URL to an exact file or folder:
+
+```sh
+vdl --output ~/storage/downloads/movies/movie.mp4 "https://example.com/video"
+vdl --output ~/storage/downloads/season1 "https://example.com/playlist"
+```
+
+Archive everything downloaded in one run:
+
+```sh
+vdl --zip links.txt
+vdl --zip=my-batch.zip links.txt
+```
+
+`--zip` requires the `zip` package and runs after `--dedupe`.
+
+Paste several URLs at once as a single argument:
+
+```sh
+vdl 'https://example.com/one
+https://example.com/two'
+```
+
+Blank and non-URL lines in a pasted block are ignored, and flags apply to every
+URL in the block.
 
 ## Background downloads
 

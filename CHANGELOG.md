@@ -2,99 +2,89 @@
 
 All notable changes to **vdl** are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
 ### Added
+
 - Termux support: `install.sh --termux`, automatic `$PREFIX` detection,
-  Termux-aware default save directory (`~/storage/downloads/vdl`), automatic
-  wake lock via Termux:API, and a detailed `docs/TERMUX.md` guide.  Browser
-  auto-detection is disabled on Termux because Android browser profiles are
-  app-private.
+  Termux-aware shared-storage defaults, automatic wake lock via Termux:API,
+  and a Termux-specific README plus `docs/TERMUX.md`.
 - `--cookies FILE` / `VDL_COOKIES`: pass a Netscape cookies.txt file to every
-  yt-dlp invocation.  Useful for non-root Termux and other environments where
-  yt-dlp cannot read browser profiles directly.
+  yt-dlp invocation.
 - `--root-cookies` / `VDL_ROOT_COOKIES`: Termux root-only import of Firefox
-  for Android's plaintext cookie database via `su`.  Chromium-based Android
-  browsers are not supported because their cookie values are encrypted with
-  the Android Keystore.
+  for Android's plaintext cookie database via `su`. Chromium-based Android
+  browsers are not supported because their values are Android
+  Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
-- Redesigned terminal output: a restyled banner, section headers per download
-  phase, per-URL status lines with `[ok]`/`[fail]` markers, and an end-of-run
-  summary with per-engine results, elapsed time, and save directory.
-  `--quiet` still suppresses all of it.
-- Ctrl+C now prints a hint that completed downloads were moved to their
-  folders and that re-running the same command resumes the rest (exit 130).
-- yt-dlp downloads now render a live progress bar
-  (`[#########-----------] 43.3% 149KiB/s | ETA 00:01`) that updates in place;
-  aria2c keeps its native per-file progress line.
-- `--dedupe` flag: after the run, removes files whose content is identical to
-  another file downloaded in the same run.  Only same-size files are hashed
-  and the oldest copy is always kept, so pre-existing files are never
-  deleted.  Opt-in; off by default.
-- Embedded-image downloading is now opt-in via `--images` (or `VDL_IMAGES=1`)
-  so plain links stay fast.  When enabled, pages without a dedicated yt-dlp
-  extractor (`generic`/`html5`) are scanned for embedded images
-  (`.jpg`, `.jpeg`, `.png`, `.webp`, `.gif`), which are downloaded with
-  aria2c using a browser user-agent and the album page as referer.  The scan is scoped to the album via the playlist's media URLs:
-  same-directory images are kept, video covers and sidebar thumbnails are
-  skipped, and `/thumb/` previews upgrade to the full-size image (probing a
-  `.jpg` sibling for `.webp` previews).  Images are saved into the same
-  album-named folder yt-dlp uses for the videos.  Photo-only albums no
-  longer fail with `Unsupported URL`.  Known-site extractors and `--dry-run`
-  are untouched.
-- `--name NAME` flag: saves a single download under a custom filename.  The
-  extension is appended when the name lacks one (`-a` audio always uses
-  `.mp3`); a name with an extension is used verbatim.  For playlist URLs,
-  NAME becomes the folder name.  Requires exactly one URL; embedded images
-  keep their own names.
-- `docs/USAGE.md`: a user guide covering installation, setup, every feature
-  with examples, and uninstallation.
-- Repository restructured for maintainability: `bin/vdl` is now a thin
-  orchestrator that sources focused libraries (`lib/vdl/ui.sh`,
-  `helpers.sh`, `images.sh`, `downloads.sh`), `docs/SPEC.md` documents the
-  behavior contract, and `test/unit.sh` unit-tests the pure helpers.
-  `install.sh` installs the libraries alongside the script.
-- `--dry-run` flag: prints the resolved plan (engine, mode, URLs, save dir)
-  without invoking yt-dlp or aria2c.
-- `--download-dir DIR` flag: override `VDL_SAVE_DIR` for a single invocation.
-- `--quiet` flag: suppress the banner and yt-dlp progress output.
-- `--aria-opts OPTS` flag: pass extra options through to aria2c.
-- `--max-speed RATE` and `--limit-speed RATE` flags: bandwidth throttling,
-  forwarded to both aria2c and yt-dlp as appropriate.
-- `magnet:` links and `.torrent` files are now recognised as direct downloads
-  and routed to aria2c when available.
-- Support for a vdl-specific config file at
-  `$XDG_CONFIG_HOME/vdl/config` (or `~/.config/vdl/config`).  It is a simple
-  `KEY=VALUE` file; recognised keys mirror the `VDL_*` environment variables.
-  Command-line flags still take precedence over both.
-- `man/vdl.1` man page, installed by `install.sh` alongside the binary.
-- `Makefile` with `test`, `lint`, `install`, and `clean` targets.
-- `CONTRIBUTING.md` guide.
-- GitHub Actions CI workflow (shellcheck + smoke tests).
-- README badges.
-- `# shellcheck shell=bash` directives in all shell scripts.
+
+## [2.0.0] - 2026-11-06
+
+### Added
+
+- Smart per-URL routing: direct files, magnet links and `.torrent` files go
+  to aria2c (16 connections, resume); pages, playlists and streams go to
+  yt-dlp (aria2c for HTTP(S) media, native for HLS/DASH).
+- Redesigned terminal output: banner, per-phase section headers, per-URL
+  `[ok]`/`[fail]` status, end-of-run summary, and a live progress bar with
+  downloaded/total size, speed and ETA.
+- Ordered passthrough: unknown options are forwarded to yt-dlp with their
+  values attached, in their original order.
+- Speed limits: `--max-speed` (aria2c overall limit) and `--limit-speed`
+  (per-download limit) with `K`/`M`/`G` suffixes; yt-dlp receives the
+  stricter non-zero value via `--limit-rate`.
+- Safe aria2c fallback: only incomplete direct files are retried via
+  yt-dlp, after removing partials and their `.aria2` control files.
+- `--dedupe`: removes files downloaded in the same run whose content is
+  identical to another (oldest copy kept; opt-in).
+- Embedded image scanning: `--images` / `VDL_IMAGES=1` downloads album
+  photos from generic/html5 pages into the album folder; favicons, logos,
+  avatars, video covers and sidebar thumbnails are skipped; photo-only
+  albums work without a failing yt-dlp run.
+- Multi-line URL paste: a positional argument containing newlines is split
+  into one URL per line (blank and non-URL lines ignored).
+- Custom destinations: `--name` (filename or playlist folder name) and
+  `--output` (exact file path or folder for a single URL).
+- Zip archiving: `--zip[=NAME.zip]` packs a run's downloads into a single
+  archive in the save directory (runs after `--dedupe`; requires `zip`).
+- UI polish: a run-level `[Run] n/m` progress counter after each phase, a
+  `Failed:` recap in the summary with per-URL reasons, a scanning indicator
+  during `--images`, and a terminal-width-adaptive progress bar.
+- `--images` downloads embedded photos **after** the videos now: the page
+  scan itself runs post-download, so media is always finished first.
+- Configuration: `VDL_*` environment variables and a `KEY=VALUE` config
+  file with CLI > environment > config > defaults precedence.
+- Browser cookies (auto-detected or `-b NAME:PROFILE`), TLS impersonation
+  probing, custom headers, proxy, and clipboard URL pickup.
+- `--dry-run` plan preview, `--quiet`, `--download-dir`, `--aria-opts`,
+  audio extraction (`-a`, MP3 320k), and quality caps with `2k`/`4k`/`8k`
+  aliases.
+- Friendly Ctrl+C handling with a resume hint (exit 130).
+- Installer/uninstaller with bash/zsh/fish completions and a man page.
+- Network-free smoke test suite and unit tests for pure helpers; CI runs
+  ShellCheck plus both suites.
 
 ### Changed
-- The yt-dlp impersonation capability probe now only runs when yt-dlp will
-  actually be invoked, avoiding a wasted subprocess on pure aria2c downloads.
-- `install.sh` checks for write permission to the target prefix before
-  installing and gives a clear error if `--system` is used without `sudo`.
+
+- Code base restructured into a thin `bin/vdl` orchestrator and focused
+  libraries under `lib/vdl/` (ui, helpers, images, downloads, args,
+  settings, collect, paths, classify, ytdlp, plan).
+- yt-dlp runs with `--ignore-config` and vdl's own defaults, optionally
+  extended by `~/.config/vdl/yt-dlp.conf`.
+- aria2c always receives `-Z`, so multiple URLs download as separate files
+  instead of being treated as mirrors of one.
 
 ### Fixed
-- Forwarded yt-dlp options now keep their values adjacent.  Options such as
-  `--download-archive` no longer consume the following flag as their argument.
-- aria2c now runs with `-Z`, so multiple direct-file or embedded-image URLs
-  each download correctly.  Without it, aria2c treats several URLs as
-  mirrors of one file and silently downloads only the first.
-- `--max-speed` and `--limit-speed` now map to the correct backend options:
-  aria2c's overall and per-download limits, and yt-dlp's `--limit-rate`.
-  Rates are converted to bytes, so values like `1.5M` and `1G` work.
-- When aria2c fails, incomplete direct files are removed before the yt-dlp
-  fallback, and only the downloads that actually failed are retried.  This
-  avoids reporting success for a truncated file left by aria2c.
 
-### Removed
-- Dead `rc_clean` variable in `install.sh` (it was always `0`).
+- `.tgz`/`.tbz2`/`.tbz`/`.txz`/`.tlz` URLs are classified as direct files.
+- Embedded-image pages are fetched to a temp file and parsed only when the
+  response is HTML, so binary responses are never slurped into a variable.
+- Symlinked `vdl` binaries can find their libraries.
+- `--output` and images-only albums show the correct engine/mode in the
+  banner.
+
+## [1.0.0] - 2026-10-28
+
+Initial release as a Bash rewrite of the original fish-function downloader.

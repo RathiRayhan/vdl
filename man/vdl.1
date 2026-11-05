@@ -1,4 +1,4 @@
-.TH VDL 1 "2026-11-04" "vdl 2.0.0" "User Commands"
+.TH VDL 1 "2026-11-06" "vdl 2.0.0" "User Commands"
 .SH NAME
 vdl \- portable smart downloader for Linux and Termux (yt-dlp + aria2c)
 .SH SYNOPSIS
@@ -6,7 +6,7 @@ vdl \- portable smart downloader for Linux and Termux (yt-dlp + aria2c)
 [\fIOPTIONS\fR] [\fIurl\fR | \fIlinks.txt\fR]
 .SH DESCRIPTION
 .B vdl
-is a single Bash script that routes downloads intelligently: direct files
+is a Bash downloader that routes downloads intelligently: direct files
 (archives, ISO images, PDFs, magnet links, \fI.torrent\fR files, plain video
 files) are sent to
 .B aria2c
@@ -93,6 +93,15 @@ Per-download speed limit.
 .B \-\-name \fINAME\fR
 Save a single download under this filename (the extension is appended when
 NAME has none).  For a playlist URL, NAME becomes the folder name instead.
+.TP
+.B \-\-output \fIPATH\fR
+Exact destination for a single URL.  A PATH whose last component has an
+extension is the exact file; otherwise PATH is the exact folder (playlist
+items go directly inside it).  Cannot be combined with \-\-name.
+.TP
+.B \-\-zip\fR[\fB=\fINAME.zip\fR]
+Archive this run's downloads into a zip in the save directory.  With no
+name, an automatic vdl-<timestamp>.zip is used.  Requires the zip command.
 .TP
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
@@ -184,6 +193,8 @@ vdl -a "https://example.com/album"        # MP3 320k
 vdl -n "https://example.com/file.iso"     # direct file, no cookies
 vdl --cookies cookies.txt "https://example.com/video"  # manual cookies
 vdl --root-cookies "https://example.com/video"  # Termux + root + Firefox
+vdl --output ~/Videos/movie.mp4 "https://example.com/video"
+vdl --zip=my-batch.zip links.txt
 vdl --no-aria -F "https://example.com/video"  # list formats
 vdl --dry-run "https://example.com/file.iso"   # preview routing
 vdl --download-dir ~/tmp "https://example.com/file.zip"

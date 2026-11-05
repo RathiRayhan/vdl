@@ -1,12 +1,15 @@
 # vdl User Guide
 
-`vdl` is a portable smart downloader for Linux and Termux. It picks the right engine for
-each URL: direct files go through **aria2c** when it is available, while pages,
-playlists, and streams go through **yt-dlp**. This guide covers installation,
-setup, every feature with examples, and uninstallation.
+`vdl` is a smart downloader for Linux and Termux. It routes every URL to the
+right engine — aria2c for direct files, yt-dlp for pages, playlists and
+streams — and layers resumable multi-connection downloads, cookies, speed
+limits, custom names, and embedded album images on top.
 
-See `README.md` for the project overview and `man vdl` for the option
-reference.
+This guide covers installation, setup, every feature with examples, and
+uninstallation. Termux users should also read
+[TERMUX.md](TERMUX.md). See the [README](../README.md) for the project overview,
+`man vdl` for the option reference, and [SPEC.md](SPEC.md) for the behavior
+contract.
 
 ---
 
@@ -19,19 +22,32 @@ reference.
 | `aria2c` | fast direct-file downloads (optional) | `aria2` |
 | `ffmpeg` | `-a` audio extraction, merging | `ffmpeg` |
 | `python-curl_cffi` | browser impersonation (optional, auto-detected) | `python-curl-cffi` |
+| `curl` | embedded-image scanning (`--images`, optional) | `curl` |
+| `zip` | `--zip` archiving (optional) | `zip` |
 | `wl-clipboard`, `xclip`, or `xsel` | clipboard URL pickup (optional) | `wl-clipboard`, `xclip`, `xsel` |
 
-Everything optional is detected at run time; without `aria2c`, direct files are
-downloaded with yt-dlp, and without `curl_cffi`, impersonation is skipped.
+Everything optional is detected at run time: without `aria2c`, direct files
+are downloaded with yt-dlp; without `curl_cffi`, impersonation is skipped.
+
+### Termux packages
+
+```sh
+pkg install git bash coreutils findutils gawk grep sed curl zip \
+    aria2 python ffmpeg termux-api
+pkg install python-yt-dlp yt-dlp-ejs deno
+# 32-bit: pkg install nodejs, then add --js-runtimes node to
+# ~/.config/vdl/yt-dlp.conf
+```
+
+`zip` is required only for `--zip`. Install the Termux:API app from F-Droid if
+you want the automatic wake lock and media scanning.
 
 ---
 
 ## Installation
 
-Clone the repository and run the installer:
-
 ```sh
-git clone https://github.com/rathi/vdl.git
+git clone https://github.com/RathiRayhan/vdl.git
 cd vdl
 
 ./install.sh                     # ~/.local/bin + shell completions
@@ -50,7 +66,8 @@ The installer places:
 
 Make sure `~/.local/bin` is on your `PATH` (the installer prints the line to
 add if it is not). For zsh, it also prints the `fpath` line needed before
-`compinit`.
+`compinit`. On Termux, `--termux` installs under `$PREFIX` and `--system` is
+not supported.
 
 Verify the installation:
 
@@ -62,7 +79,8 @@ man vdl
 
 ### Alternative: manual install
 
-Copy `bin/vdl` and its libraries to any directory on your `PATH`:
+Copy `bin/vdl` and its libraries to any directory on your `PATH`, keeping
+the relative layout (`vdl` looks for its libraries in `../lib/vdl`):
 
 ```sh
 install -Dm755 bin/vdl ~/.local/bin/vdl
@@ -70,66 +88,6 @@ install -d ~/.local/lib/vdl
 install -Dm644 lib/vdl/*.sh -t ~/.local/lib/vdl/
 install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 ```
-
-The script looks for its libraries in `../lib/vdl` next to the binary, so
-keep that relative layout (as `install.sh` does).
-
-Completions are optional; see `completions/` for `vdl.bash` (bash),
-`_vdl` (zsh), and `vdl.fish` (fish).
-
-### Termux
-
-The same code runs on Android. Install the packaged engines, then use the
-Termux installer mode:
-
-```sh
-pkg update
-pkg install git bash coreutils findutils gawk grep sed curl \
-    aria2 python ffmpeg termux-api
-pkg install python-yt-dlp yt-dlp-ejs
-pkg install deno                 # 64-bit ARM/x86_64
-# pkg install nodejs             # 32-bit fallback, then add --js-runtimes node
-
-termux-setup-storage
-git clone https://github.com/rathi/vdl.git
-cd vdl
-./install.sh --termux
-```
-
-`--termux` installs under `$PREFIX` (the standard Termux prefix), not
-`/usr/local`. Running `./install.sh` inside Termux auto-detects this too.
-
-On Termux, the default save directory is `~/storage/downloads/vdl` when
-`termux-setup-storage` has been run. Downloads in Termux's private home are
-not visible to Android's file manager or gallery, so using shared storage is
-recommended. You can override this with `VDL_SAVE_DIR`.
-
-Long downloads can be suspended when Android sleeps. With the `termux-api`
-package and the Termux:API app installed, vdl holds a wake lock automatically
-for the duration of the run; set `VDL_WAKELOCK=0` to disable it. Disabling
-battery optimization for Termux also helps.
-
-Termux notes:
-
-- `ffmpeg` includes libmp3lame, so `-a` MP3 320k extraction and MP4 merging
-  work. Merging 4K video can be slow and heat the phone.
-- `aria2c` supports BitTorrent in Termux, but background execution, carrier
-  filtering, and seeding are less reliable than on a desktop.
-- Browser auto-detection is disabled because Android browser profiles are
-  app-private. Use `--cookies cookies.txt` for a manual cookie file.
-- On a rooted device, `--root-cookies` imports Firefox for Android cookies via
-  `su`. Chrome/Chromium/Brave cookie databases are encrypted with the Android
-  Keystore and are not supported this way; use a `cookies.txt` export.
-- `curl_cffi` ships Android arm64 wheels for current Python versions, so TLS
-  impersonation may work on 64-bit ARM phones after `pip install curl-cffi`.
-  Check with `yt-dlp --list-impersonate-targets`; on other architectures it is
-  skipped automatically.
-- If yt-dlp reports that YouTube needs a JavaScript runtime, install
-  `yt-dlp-ejs` and either Deno (64-bit) or Node (32-bit). Because vdl runs
-  yt-dlp with `--ignore-config`, add `--js-runtimes node` to
-  `~/.config/vdl/yt-dlp.conf` when using Node instead of Deno.
-
-See **[TERMUX.md](TERMUX.md)** for the detailed Termux guide.
 
 ---
 
@@ -144,9 +102,10 @@ See **[TERMUX.md](TERMUX.md)** for the detailed Termux guide.
 | `VDL_QUALITY` | `1080` | default max video height |
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
+| `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
 | `VDL_COOKIES` | unset | Netscape cookies.txt file passed to yt-dlp |
-| `VDL_ROOT_COOKIES` | unset | `1` or `firefox` to import Firefox Android cookies via root on Termux |
-| `VDL_WAKELOCK` | `1` | set to `0` to disable the automatic Termux wake lock |
+| `VDL_ROOT_COOKIES` | unset | `1`/`firefox` to import Firefox Android cookies via root on Termux |
+| `VDL_WAKELOCK` | `1` | `0` disables the automatic Termux wake lock |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
 | `NO_COLOR` | unset | disable colored output |
@@ -158,29 +117,31 @@ export VDL_BROWSER=firefox
 export VDL_QUALITY=720
 ```
 
+Precedence everywhere: **command line > environment > config file >
+defaults**.
+
 ### vdl config file
 
-`$VDL_CONFIG_DIR/config` (default `~/.config/vdl/config`) is a simple
-`KEY=VALUE` file that sets defaults mirroring the `VDL_*` variables.
-Command-line flags and exported environment variables take precedence.
+`$VDL_CONFIG_DIR/config` (default `~/.config/vdl/config`) is a `KEY=VALUE`
+file that sets defaults mirroring the `VDL_*` variables.
 
 ```sh
 # ~/.config/vdl/config
 QUALITY=720
 BROWSER=firefox
-SAVE_DIR=~/Downloads/vdl
+SAVE_DIR=~/storage/downloads/vdl
 IMPERSONATE=chrome
+IMAGES=1
 TMP_KEEP_DAYS=7
-COOKIES=~/cookies.txt
-ROOT_COOKIES=0
+COOKIES=~/storage/downloads/cookies.txt
 WAKELOCK=1
 ```
 
 ### Extra yt-dlp options
 
 `VDL_CONFIG` points to an ordinary yt-dlp config file (default
-`~/.config/vdl/yt-dlp.conf`). It is loaded **in addition** to the defaults
-baked into vdl, and CLI flags still win over both:
+`~/.config/vdl/yt-dlp.conf`), loaded **in addition** to vdl's built-in
+defaults:
 
 ```
 # ~/.config/vdl/yt-dlp.conf
@@ -199,15 +160,20 @@ vdl [options]                          # no URL: takes the link from the clipboa
 ### Basic downloads
 
 ```sh
-vdl "https://example.com/video"        # single URL
+vdl "https://example.com/video"                      # single URL
 vdl "https://example.com/video" "https://example.com/file.zip"   # mixed input
-vdl                                    # URL from the clipboard
-vdl www.example.com/video              # "www." is normalized to https://
+vdl "https://example.com/a" "https://example.com/b"  # multiple URLs
+vdl 'https://example.com/one
+https://example.com/two'                             # pasted URL block
+vdl                                                 # URL from the clipboard
+vdl www.example.com/video                            # "www." normalized to https://
 ```
 
-Any number of URLs can be given in one run. vdl classifies each one and uses
-aria2c for direct files and yt-dlp for everything else, all in the same
-invocation. Duplicate URLs are removed while preserving order.
+Any number of URLs can be given in one run — space-separated or pasted as a
+single multi-line block. Blank lines and non-URL lines in a paste are
+ignored. All flags apply to every URL in the run. vdl classifies each URL,
+uses aria2c for direct files and yt-dlp for everything else, and removes
+duplicate URLs while preserving order.
 
 ### Batch files
 
@@ -251,22 +217,22 @@ The browser is auto-detected when `-b` is not given. Supported browsers:
 `vivaldi`, `firefox`, `brave`, `chromium`, `chrome`, `edge`, `opera`,
 `safari`, `whale`, or `none`.
 
-For a browser profile that yt-dlp cannot find automatically, or on Termux
-where Android browser data is app-private, use a Netscape cookie file:
+For a manual Netscape cookie file, or on Termux where Android browser data is
+app-private:
 
 ```sh
-vdl --cookies cookies.txt "https://example.com/video"
-VDL_COOKIES=cookies.txt vdl "https://example.com/video"
+vdl --cookies ~/storage/downloads/cookies.txt "https://example.com/video"
+VDL_COOKIES=~/storage/downloads/cookies.txt vdl "https://example.com/video"
 ```
 
-On rooted Termux, `--root-cookies` copies Firefox for Android's plaintext
-cookie database into Termux and passes it to yt-dlp. Chrome, Chromium, Brave,
-and other Chromium-based Android browsers encrypt their cookie values with the
-Android Keystore, so root alone does not make them readable; export a
+On rooted Termux, `--root-cookies` imports Firefox for Android's plaintext
+cookie database via `su`. Chrome/Chromium/Brave/Edge cookie values are
+encrypted with the Android Keystore and cannot be imported this way; export a
 `cookies.txt` file for those browsers.
 
-Cookies apply to yt-dlp requests. Direct aria2c downloads do not receive
-browser cookies; use `--no-aria` for cookie-protected direct links.
+Cookies apply to yt-dlp requests, including direct-file fallback and image
+probes. Direct aria2c downloads do not receive browser cookies; use
+`--no-aria` for cookie-protected direct links.
 
 ### TLS impersonation
 
@@ -289,7 +255,7 @@ vdl --proxy "http://127.0.0.1:8080" "https://example.com/video"
 
 These are forwarded to whichever engine handles the URL.
 
-### Direct files and routing
+### Routing
 
 | URL looks like | Engine |
 |----------------|--------|
@@ -299,14 +265,9 @@ These are forwarded to whichever engine handles the URL.
 | HLS/DASH (`m3u8`, `mpd`) | yt-dlp native, 8 fragments |
 | pages, playlists, everything else | yt-dlp + aria2c (10 connections) |
 
-Force everything through yt-dlp:
-
-```sh
-vdl --no-aria "https://example.com/file.iso"
-```
-
-Direct downloads resume interrupted transfers and use multiple connections
-per file.
+Routing checks the last path extension, so `.tar.gz`, `.zip.gz`, `.tgz`,
+and friends are all direct. Force everything through yt-dlp with
+`--no-aria`.
 
 ### Magnet links and torrents
 
@@ -321,31 +282,28 @@ downloads are reported as failed rather than retried with yt-dlp.
 ### Speed limits
 
 ```sh
-vdl --max-speed 2M "https://example.com/file.iso"    # overall limit
+vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
 vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
-vdl --limit-speed 1.5M "https://example.com/video"   # decimals allowed
+vdl --limit-speed 1.5M "https://example.com/video"    # decimals allowed
 ```
 
 Rates accept a byte count with an optional case-insensitive `K`, `M`, or `G`
-suffix (1024-based). A bare number means bytes per second, and `0` means
-unlimited. Fractional values require a suffix. Invalid values are rejected
-before any download starts.
+suffix (1024-based). A bare number means bytes per second, `0` means
+unlimited, and fractional values require a suffix. Invalid values are
+rejected before any download starts. `--max-speed` maps to aria2c's overall
+limit, `--limit-speed` to its per-download limit; yt-dlp (which has one
+limit) receives the stricter non-zero value.
 
-- `--max-speed` maps to aria2c's overall limit and yt-dlp's `--limit-rate`.
-- `--limit-speed` maps to aria2c's per-download limit.
-- When both are set, yt-dlp (which has one limit) receives the stricter
-  non-zero value.
-
-### Save location
+### Save location and naming
 
 ```sh
 vdl --download-dir ~/tmp "https://example.com/file.zip"   # one-off override
 VDL_SAVE_DIR=~/media vdl "https://example.com/video"      # or set the variable
 ```
 
-On Termux, the default is `~/storage/downloads/vdl` when
-`termux-setup-storage` has been run; otherwise it falls back to
-`~/Downloads/vdl` and prints a setup hint.
+On Termux, the default is `~/storage/downloads/vdl` after
+`termux-setup-storage`; without it vdl falls back to `~/Downloads/vdl` and
+prints a setup hint.
 
 Naming:
 
@@ -353,10 +311,36 @@ Naming:
 - Playlist and album entries get a folder named after the playlist/album.
 - `-a` writes MP3 files to `<save_dir>/audio` with the same layout.
 
+### Custom filename (`--name`)
+
+```sh
+vdl --name my-rom "https://example.com/file.iso"        # -> my-rom.iso
+vdl --name "episode 1" "https://example.com/video"      # -> episode 1.mp4
+vdl --name custom.mp4 "https://example.com/video"       # used verbatim
+vdl -a --name mytune "https://example.com/song"         # -> audio/mytune.mp3
+```
+
+The extension is appended automatically when the name has none (audio mode
+always uses `.mp3`). For a **playlist URL**, `--name` names the folder
+instead — items inside keep their own titles. `--name` requires exactly one
+URL.
+
+### Exact destination (`--output`)
+
+```sh
+vdl --output ~/Videos/movie.mp4 "https://example.com/video"  # exact file
+vdl --output ~/Videos/season1 "https://example.com/playlist" # exact folder
+```
+
+A path whose last component has an extension is the exact file; otherwise it
+is the exact folder (playlist items go directly inside it, with no
+title-named subfolder). Directories are created automatically. `--output`
+requires exactly one URL and cannot be combined with `--name`.
+
 ### yt-dlp passthrough options
 
 Unknown options are forwarded to yt-dlp in their original order, with values
-attached, so any yt-dlp option works:
+attached:
 
 ```sh
 vdl -F "https://example.com/video"                      # list formats
@@ -366,8 +350,8 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv \
     "https://example.com/video"
 ```
 
-These options take effect on yt-dlp paths; a pure aria2c direct download does
-not interpret yt-dlp-only flags.
+These options take effect on yt-dlp paths; a pure aria2c direct download
+does not interpret yt-dlp-only flags.
 
 ### aria2c tuning
 
@@ -400,120 +384,91 @@ re-download everything:
 
 Only the incomplete HTTP(S) URLs are retried, via yt-dlp with the same save
 directory, cookies, headers, proxy, impersonation, and passthrough options.
-Magnet/torrent downloads are not retried this way. If nothing is retryable,
-vdl exits with aria2c's status.
+Magnet/torrent downloads are not retried. If nothing is retryable, vdl
+exits with aria2c's status.
 
-### Removing duplicate downloads
+### Embedded images (`--images`)
 
-Some sites list the same video more than once per playlist, so yt-dlp
-downloads identical files under different names. `--dedupe` cleans that up
-after the run:
-
-```sh
-vdl --dedupe "https://example.com/album/abc123"
-```
-
-After downloading, vdl compares the files created during that run — first by
-size, then by full content hash — and removes duplicates, always keeping the
-oldest copy. Files that existed before the run and files in `<save_dir>/.tmp`
-are never touched. The flag is off by default, so other downloads are
-unaffected.
-
-### Embedded images
-
-Embedded-image downloading is **opt-in** — pass `--images` (or set
-`VDL_IMAGES=1`) to keep normal links fast:
+Opt-in (`--images` or `VDL_IMAGES=1`), so plain links stay fast:
 
 ```sh
 vdl --images "https://example.com/album/abc123"
 ```
 
-With the flag on, pages without a dedicated yt-dlp extractor (the `generic`
-and `html5` extractors) are scanned for embedded images: `<img>` tags whose
-source ends in `.jpg`, `.jpeg`, `.png`, `.webp`, or `.gif`, with single or
-double quotes and `?v=...` cache-busters. Found images are downloaded with
-aria2c into the album folder, and `/thumb/` preview URLs are upgraded to the
-full-size image next to them.
+Pages without a dedicated yt-dlp extractor (the `generic` and `html5`
+extractors) are scanned for `<img>` sources (`.jpg`, `.jpeg`, `.png`,
+`.webp`, `.gif`, both quote styles, `?v=...` cache-busters). The scan is
+scoped to the album via the playlist's media URLs: same-directory images are
+kept, video covers and sidebar thumbnails are skipped, and `/thumb/`
+previews upgrade to the full-size image. Favicons, logos, avatars, and UI
+icons are excluded. Photos download with aria2c (browser user-agent + the
+album page as referer) into the album folder next to the videos — and the
+page is only **scanned after the videos have finished**, so media always
+comes first. A page with
+images but no video formats is treated as an image-only album. Known-site
+extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
+network. Everyday uses: photo galleries, manga chapters, product photos,
+and teardown guides — anywhere images live in plain HTML.
 
-The scan is scoped to the album: images must live in the same directory tree
-as the page's videos, and thumbnails whose name matches a video in the
-playlist (video covers) are skipped. Favicons, logos, avatars, UI icons,
-and sidebar/other-album thumbnails are excluded. `/thumb/` previews are
-upgraded to the full-size image (a same-named `.jpg` sibling is probed when
-the preview is `.webp`), and image downloads use a browser user-agent with
-the album page as referer, since some CDNs reject plain clients. Images are
-saved into the same album-named folder that yt-dlp uses for the videos
-(derived from the playlist/page title and sanitized the same way). A page
-that contains images but no video formats is treated as an image-only
-album. Known-site extractors (YouTube, ...) are not scanned, and `--dry-run`
-never touches the network.
+### Removing duplicate downloads (`--dedupe`)
 
-A page that contains images but no video formats is treated as an image-only
-album, so photo posts download cleanly instead of failing with
-`ERROR: Unsupported URL`. Pages handled by a known extractor (YouTube,
-html5, ...) are not scanned, and `--dry-run` never touches the network.
-
-### Custom filename
-
-`--name` saves a single download under a custom filename. The extension is
-appended automatically when the name has none (in `-a` audio mode it is
-always `.mp3`); a name that already includes an extension is used verbatim.
+Some sites list the same video more than once per playlist. `--dedupe`
+cleans that up after the run:
 
 ```sh
-vdl --name my-rom "https://example.com/file.iso"        # -> my-rom.iso
-vdl --name "episode 1" "https://example.com/video"      # -> episode 1.mp4
-vdl --name custom.mp4 "https://example.com/video"       # verbatim
+vdl --dedupe "https://example.com/album/abc123"
 ```
 
-For a **playlist/album URL**, `--name` names the folder instead — every item
-inside keeps its own title:
+vdl compares the files created during that run — first by size, then by
+full content hash — and removes duplicates, always keeping the oldest copy.
+Files that existed before the run and files in `<save_dir>/.tmp` are never
+touched. Opt-in; off by default.
+
+### Archiving to a zip (`--zip`)
+
+After a multi-URL or batch run, pack everything downloaded in that run into
+a single zip in the save directory:
 
 ```sh
-vdl --name my-album "https://example.com/playlist"      # -> my-album/1 - … .mp4
+vdl --zip url1 url2 url3                       # vdl-20261106-123456.zip
+vdl --zip=my-batch.zip links.txt               # explicit name
 ```
 
-`--name` requires exactly one URL (and that URL must download a single
-file/video or one playlist; embedded images from `--images` keep their own
-names).
+The archive contains the run's files and playlist folders (relative to the
+save directory); `.zip` is appended when the given name lacks it. Files from
+earlier runs are never included, and `--dedupe` runs first so duplicates are
+not archived. The `zip` command is required; without it vdl warns and leaves
+the files in place.
 
 ### Interrupting a download
 
-Press Ctrl+C any time. Items that finished downloading are already moved to
-their final (album) folders; only the item in flight stays in the temp
-directory. vdl prints a hint and exits with status 130. Re-run the exact
-same command to resume — completed files are skipped and the interrupted one
-continues where it left off.
+Press Ctrl+C any time. Items that finished are already in their final
+folders; only the in-flight one stays in the temp directory. vdl prints a
+hint and exits with status 130. Re-run the exact same command to resume —
+completed files are skipped and the interrupted one continues.
 
 ### Terminal output
 
-A normal run shows:
+A normal run shows a banner (engine, mode, URL counts, save dir), section
+headers, per-URL status lines with `[ok]`/`[fail]`, and an end-of-run
+summary with per-engine results and elapsed time. After each phase a
+run-level progress line tracks the whole batch:
 
 ```
-===============================================
-  vdl 2.0.0  —  smart downloader
------------------------------------------------
-  Engine:   hybrid (aria2c + yt-dlp)
-  Mode:     video (max 1080p, MP4 preferred)
-  URLs:     3 (2 direct, 1 media)
-  Save dir: ~/Downloads/vdl
-===============================================
-
---- Direct downloads via aria2c ---
-  • file.iso
-  [ok]   file.iso
-
---- Summary ---
-  Total:    1
-  Direct:   1 ok, 0 failed
-  Time:     4s
-  Save dir: ~/Downloads/vdl
-  [ok]   all downloads finished
+  [Run] 2/3 · 1 failed
 ```
 
-yt-dlp downloads show a live bar that updates in place:
+Failed downloads are recapped in the summary with their reason:
 
 ```
-[#########-----------] 43.3% 149.63KiB/s | ETA 00:01
+Failed:
+  [fail] https://example.com/video — yt-dlp exit 1
+```
+
+yt-dlp downloads render as a live bar whose width adapts to the terminal:
+
+```
+[#########-----------] 43.3% 405KiB/488KiB | 149KiB/s | ETA 00:01
 ```
 
 aria2c keeps its native per-file progress line. `NO_COLOR=1` or a non-TTY
@@ -528,13 +483,14 @@ Use the same options you installed with:
 ```sh
 ./install.sh --uninstall               # user-level install
 sudo ./install.sh --system --uninstall # system-wide install
+./install.sh --termux --uninstall      # Termux install
 ```
 
-This removes `vdl`, the man page, and the completions it placed. To clean up
-leftovers:
+This removes `vdl`, its libraries, the man page, and the completions. To
+clean up leftovers:
 
 ```sh
-rm -rf ~/.config/vdl                  # vdl config and yt-dlp.conf
+rm -rf ~/.config/vdl ~/.cache/vdl     # config, yt-dlp.conf, root cookie cache
 ```
 
 If you previously used the old fish function version, remove it as well —
@@ -544,11 +500,23 @@ fish functions take precedence over binaries on `PATH`:
 rm -f ~/.config/fish/functions/vdl.fish
 ```
 
-If you installed the optional YouTube PO token provider, remove it with:
+---
 
-```sh
-systemctl --user disable --now bgutil-pot-provider.service
-rm -f ~/.config/systemd/user/bgutil-pot-provider.service
-rm -rf ~/.local/share/bgutil-ytdlp-pot-provider
-rm -rf ~/.config/yt-dlp/plugins/bgutil-ytdlp-pot-provider
-```
+## Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `yt-dlp is required but was not found in PATH` | Install yt-dlp (distro package, pipx, or the standalone binary) |
+| Direct files download slowly or fail with 403 | Some CDNs block plain clients; retry with `--no-aria` or `--user-agent` |
+| `Invalid speed` / `Invalid quality` / `Unknown browser` | Check the value; exit code 2 means a usage error |
+| `--images` finds nothing | Only `generic`/`html5` pages are scanned; images must be plain `<img>` tags in the page HTML |
+| A page yields `Unsupported URL` without `--images` | yt-dlp cannot handle that page; try `--images` for photo-only albums or report upstream |
+| Interrupted run left files in `.tmp` | Re-run the same command; it resumes and moves the leftovers |
+| Termux downloads are invisible to Android apps | Run `termux-setup-storage`; use `VDL_SAVE_DIR=~/storage/downloads/vdl` |
+| YouTube only offers 360p on Termux | Install `yt-dlp-ejs` plus Deno/Node; see [TERMUX.md](TERMUX.md) |
+| `--root-cookies` fails | Confirm root, Firefox Android, and `su`; Chrome/Chromium cookies are encrypted |
+| `--zip` says zip is missing | `pkg install zip` on Termux |
+| Long Termux downloads are killed | Keep the wake lock, disable battery optimization, use `tmux` |
+
+For more help, see the [README](../README.md), the [SPEC](SPEC.md), or open
+an issue on GitHub.

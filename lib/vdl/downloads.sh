@@ -6,6 +6,47 @@
 # pending direct files via yt-dlp, media/pages via yt-dlp, and the --dedupe
 # post-step.  Sourced by bin/vdl.
 
+# With --zip: archive the files downloaded in this run into a single zip in
+# the save directory.  Runs after dedupe so duplicates are not archived.
+archive_run() {
+    (( zip_mode )) || return 0
+
+    have zip || { warn "zip is not installed: skipping --zip archive"; return 0; }
+
+    local -a entries=()
+    local f
+    while IFS= read -r -d '' f; do
+        case ${f##*/} in
+            *.aria2|*.part|*.ytdl|*.temp) continue ;;
+        esac
+        entries+=("$f")
+    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
+        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+
+    if (( ${#entries[@]} == 0 )); then
+        note "--zip: no files were downloaded in this run; nothing to archive"
+        return 0
+    fi
+
+    local target=$zip_name
+    if [[ -z $target ]]; then
+        target="vdl-$(date +%Y%m%d-%H%M%S).zip"
+    elif [[ $target != *.zip ]]; then
+        target=$target.zip
+    fi
+    if [[ $target == */* ]]; then
+        mkdir -p "$save_dir/${target%/*}" || return 0
+    fi
+
+    rm -f -- "$save_dir/$target"
+    if ( cd "$save_dir" && zip -q -r -- "$target" "${entries[@]#"$save_dir"/}" ); then
+        zip_created=$target
+        note "Archived ${#entries[@]} file(s) to ${target}"
+    else
+        warn "zip failed — files were left in place"
+    fi
+}
+
 # With --dedupe: remove files created during this run whose content is
 # identical to another file from the same run.  Only same-size files are
 # hashed, and the oldest copy is always kept, so a file that already existed
@@ -115,6 +156,7 @@ download_directs() {
         case ${u,,} in
             magnet:*|*.torrent)
                 direct_fail=$((direct_fail + 1))
+                failed_items+=("$u|aria2c failed")
                 ui_result 1 "$(ui_name "$u")"
                 continue
                 ;;
@@ -161,6 +203,7 @@ download_pending_directs() {
         rc=1
         direct_fail=$((direct_fail + ${#direct_pending[@]}))
         for u in "${direct_pending[@]}"; do
+            failed_items+=("$u|yt-dlp not found")
             ui_result 1 "$(ui_name "$u")"
         done
         return 0
@@ -190,6 +233,7 @@ download_pending_directs() {
         (( u_rc )) && rc=$u_rc
         if (( u_rc )); then
             direct_fail=$((direct_fail + 1))
+            failed_items+=("$u|yt-dlp exit $u_rc")
         else
             direct_ok=$((direct_ok + 1))
         fi
@@ -229,6 +273,16 @@ download_media() {
     [[ -n $referer ]] && yt_media+=( --referer "$referer" )
     [[ -n $proxy ]] && yt_media+=( --proxy "$proxy" )
 
+    # The item template: with --output FOLDER the playlist title prefix is
+    # dropped so everything lands directly in that folder.
+    if (( ${out_folder_strip:-0} )); then
+        media_out_template='%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    elif (( audio )); then
+        media_out_template='%(playlist_title)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    else
+        media_out_template='%(playlist_title,album)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    fi
+
     if (( audio )); then
         yt_media+=(
             -f 'bestaudio/best'
@@ -237,7 +291,7 @@ download_media() {
             -P "home:$out_dir"
             -P "temp:$tmp_dir"
             --output-na-placeholder '.'
-            -o '%(playlist_title)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+            -o "$media_out_template"
         )
     else
         yt_media+=(
@@ -248,7 +302,7 @@ download_media() {
             -P "home:$save_dir"
             -P "temp:$tmp_dir"
             --output-na-placeholder '.'
-            -o '%(playlist_title,album)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+            -o "$media_out_template"
         )
     fi
     # A custom name overrides the default template (the last -o wins).
@@ -261,6 +315,9 @@ download_media() {
         media_ok=${#media[@]}
     else
         media_fail=${#media[@]}
+        for u in "${media[@]}"; do
+            failed_items+=("$u|yt-dlp exit $media_rc")
+        done
     fi
     for u in "${media[@]}"; do
         ui_result $media_rc "$u"

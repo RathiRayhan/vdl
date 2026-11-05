@@ -67,13 +67,33 @@ ui_name() {
     esac
 }
 
-# Render yt-dlp's \r-separated progress stream as a fixed-width bar plus the
-# speed/ETA text, all on one updating line.  Non-progress output passes
-# through untouched, with the leading [tag]/WARNING:/ERROR: prefix colored to
-# match vdl's palette (yt-dlp skips its own colors when piped).
+# A run-level progress line, printed after each download phase:
+# "  [Run] 2/3 · 1 failed"
+ui_run_progress() {
+    (( quiet )) && return 0
+    local done=$(( direct_ok + direct_fail + media_ok + media_fail + img_ok + img_fail ))
+    local total=$(( ${#direct[@]} + ${#media[@]} + ${#img_urls[@]} ))
+    local failed=$(( direct_fail + media_fail + img_fail ))
+    (( total )) || return 0
+    if (( failed )); then
+        printf '  %s[Run]%s %d/%d · %s%d failed%s\n' "$C_DIM" "$C_OFF" "$done" "$total" "$C_RED" "$failed" "$C_OFF"
+    else
+        printf '  %s[Run]%s %d/%d\n' "$C_DIM" "$C_OFF" "$done" "$total"
+    fi
+}
+
+# Render yt-dlp's \r-separated progress stream as a bar whose width adapts
+# to the terminal, plus the speed/ETA text, all on one updating line.
+# Non-progress output passes through untouched, with the leading
+# [tag]/WARNING:/ERROR: prefix colored to match vdl's palette (yt-dlp skips
+# its own colors when piped).
 yt_bar() {
-    awk -v grn="$C_GRN" -v yel="$C_YEL" -v red="$C_RED" -v off="$C_OFF" '
-        BEGIN { RS = "\r"; ORS = ""; w = 20; newline = 1; pending = 0 }
+    local w=${COLUMNS:-80}
+    (( w -= 45 ))
+    (( w < 10 )) && w=10
+    (( w > 40 )) && w=40
+    awk -v grn="$C_GRN" -v yel="$C_YEL" -v red="$C_RED" -v off="$C_OFF" -v w="$w" '
+        BEGIN { RS = "\r"; ORS = ""; newline = 1; pending = 0 }
 
         function colorize(seg) {
             if (seg ~ /^\[[A-Za-z0-9_.-]+\]/) {
@@ -141,11 +161,12 @@ print_banner() {
         ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
     fi
     [[ -n ${custom_name:-} ]] && ui_row 'Name' "$custom_name"
+    [[ -n ${output_arg:-} ]] && ui_row 'Output' "$output_arg"
     if (( ${#batch_files[@]} )); then
         ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi
     if [[ -n ${cookie_label:-} ]] \
-        && { (( ${#media[@]} )) || (( direct_via_ytdlp )) || (( ${#img_urls[@]} )); }; then
+        && { (( ${#media[@]} )) || (( direct_via_ytdlp )) || (( ${#img_urls[@]} )) || (( ${#scan_pages[@]} )); }; then
         ui_row 'Cookies' "$cookie_label"
     fi
     ui_row 'Save dir' "$display_dir"
@@ -165,12 +186,22 @@ print_summary() {
     if (( ${#img_urls[@]} )); then
         ui_row 'Images' "$img_ok ok, $img_fail failed"
     fi
+    [[ -n ${zip_created:-} ]] && ui_row 'Archive' "$zip_created"
     if (( SECONDS >= 60 )); then
         ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
     else
         ui_row 'Time' "${SECONDS}s"
     fi
     ui_row 'Save dir' "$display_dir"
+    if (( ${#failed_items[@]} )); then
+        printf '  %sFailed:%s\n' "$C_RED" "$C_OFF"
+        local item u r
+        for item in "${failed_items[@]}"; do
+            u=${item%%|*}
+            r=${item#*|}
+            ui_result 1 "$u — $r"
+        done
+    fi
     if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
         ui_result 0 "all downloads finished"
     else

@@ -1,4 +1,4 @@
-# Makefile for vdl — portable smart downloader for Linux
+# Makefile for vdl — portable smart downloader for Linux and Termux
 
 .PHONY: test lint install clean man
 
@@ -9,8 +9,14 @@ test:
 
 ## Lint all shell scripts with shellcheck
 lint:
+	@command -v shellcheck >/dev/null 2>&1 || { \
+		echo "shellcheck not found in PATH; install it (apt install shellcheck) or run the CI workflow." >&2; \
+		exit 1; \
+	}
 	shellcheck --shell=bash bin/vdl install.sh test/smoke.sh test/unit.sh \
-		lib/vdl/ui.sh lib/vdl/helpers.sh lib/vdl/images.sh lib/vdl/downloads.sh
+		lib/vdl/ui.sh lib/vdl/helpers.sh lib/vdl/images.sh lib/vdl/downloads.sh \
+		lib/vdl/args.sh lib/vdl/settings.sh lib/vdl/collect.sh lib/vdl/paths.sh \
+		lib/vdl/classify.sh lib/vdl/ytdlp.sh lib/vdl/plan.sh
 	shellcheck completions/vdl.bash
 
 ## Install vdl locally (user-level)

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
+# shellcheck disable=SC2034  # globals declared/written here are used by lib/vdl/*.sh
 # vdl - portable smart downloader for Linux and Termux (yt-dlp + aria2c)
 #
 # Requires: bash 4+, yt-dlp.
@@ -10,13 +11,21 @@
 #
 # Direct files (.zip, .iso, .pdf, .mp4 links, ...) go to aria2c when it is
 # available; pages, playlists and streams go to yt-dlp.  All yt-dlp defaults
-# live in this file, so vdl does not depend on ~/.config/yt-dlp/config.
+# live in lib/vdl/ytdlp.sh, so vdl does not depend on
+# ~/.config/yt-dlp/config.
 #
 # This file is the orchestrator; the reusable pieces live in lib/vdl/:
 #   ui.sh        colors, status output, progress bar, banner/summary
 #   helpers.sh   usage, parsing/normalization, config, URL classification
 #   images.sh    embedded-image scanning and downloading
 #   downloads.sh direct/media download engines and --dedupe
+#   args.sh      command-line parsing
+#   settings.sh  browser/quality/speed resolution
+#   collect.sh   URL collection and validation
+#   paths.sh     save dir, temp dir, traps, --output repointing
+#   classify.sh  direct/media split, image scan, --name/--output resolution
+#   ytdlp.sh     yt-dlp defaults and impersonation
+#   plan.sh      engine/mode strings and the dry-run plan
 # See docs/SPEC.md for the behavior contract these files implement.
 
 set -u -o pipefail
@@ -31,798 +40,60 @@ if [[ -z $vdl_lib || ! -d $vdl_lib ]]; then
     printf 'vdl: library directory not found next to the script (expected lib/vdl/)\n' >&2
     exit 1
 fi
-# shellcheck source=lib/vdl/ui.sh
-source "$vdl_lib/ui.sh"
-# shellcheck source=lib/vdl/helpers.sh
-source "$vdl_lib/helpers.sh"
-# shellcheck source=lib/vdl/images.sh
-source "$vdl_lib/images.sh"
-# shellcheck source=lib/vdl/downloads.sh
-source "$vdl_lib/downloads.sh"
-
-# ---------------------------------------------------------------------------
-# 1. Parse arguments
-# ---------------------------------------------------------------------------
-browser_arg=''
-browser_set=0
-no_cookies=0
-cookies_file=''
-root_cookies=0
-quality_arg=''
-quality_set=0
-audio=0
-no_aria=0
-no_impersonate=0
-referer=''
-ua=''
-proxy=''
-download_dir=''
-quiet=0
-dry_run=0
-dedupe=0
-images=0
-aria_opts=''
-max_speed=''
-limit_speed=''
-custom_name=''
-
-declare -a batch_files=()
-declare -a raw_args=()
-declare -a raw_kind=()
-declare -a passthru=()
-prev_unknown_flag=0
-
-while (( $# > 0 )); do
-    arg=$1
-    shift
-    case $arg in
-        -h|--help)
-            usage
-            exit 0
-            ;;
-        -V|--version)
-            printf 'vdl %s\n' "$VDL_VERSION"
-            exit 0
-            ;;
-        -n|--no-cookies)
-            no_cookies=1
-            prev_unknown_flag=0
-            ;;
-        --cookies)
-            (( $# > 0 )) || need_value "$arg"
-            cookies_file=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --cookies=*)
-            cookies_file=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --root-cookies)
-            root_cookies=1
-            prev_unknown_flag=0
-            ;;
-        -a|--audio)
-            audio=1
-            prev_unknown_flag=0
-            ;;
-        --no-aria)
-            no_aria=1
-            prev_unknown_flag=0
-            ;;
-        --no-impersonate)
-            no_impersonate=1
-            prev_unknown_flag=0
-            ;;
-        -b|--browser)
-            (( $# > 0 )) || need_value "$arg"
-            browser_arg=$1
-            shift
-            browser_set=1
-            prev_unknown_flag=0
-            ;;
-        --browser=*)
-            browser_arg=${arg#*=}
-            browser_set=1
-            prev_unknown_flag=0
-            ;;
-        -b?*)
-            browser_arg=${arg#-b}
-            browser_set=1
-            prev_unknown_flag=0
-            ;;
-        -q|--quality)
-            (( $# > 0 )) || need_value "$arg"
-            quality_arg=$1
-            shift
-            quality_set=1
-            prev_unknown_flag=0
-            ;;
-        --quality=*)
-            quality_arg=${arg#*=}
-            quality_set=1
-            prev_unknown_flag=0
-            ;;
-        -q?*)
-            quality_arg=${arg#-q}
-            quality_set=1
-            prev_unknown_flag=0
-            ;;
-        -i|--batch-file)
-            (( $# > 0 )) || need_value "$arg"
-            batch_files+=("$1")
-            shift
-            prev_unknown_flag=0
-            ;;
-        --batch-file=*)
-            batch_files+=("${arg#*=}")
-            prev_unknown_flag=0
-            ;;
-        -i?*)
-            batch_files+=("${arg#-i}")
-            prev_unknown_flag=0
-            ;;
-        --referer)
-            (( $# > 0 )) || need_value "$arg"
-            referer=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --referer=*)
-            referer=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --user-agent)
-            (( $# > 0 )) || need_value "$arg"
-            ua=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --user-agent=*)
-            ua=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --proxy)
-            (( $# > 0 )) || need_value "$arg"
-            proxy=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --proxy=*)
-            proxy=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --download-dir)
-            (( $# > 0 )) || need_value "$arg"
-            download_dir=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --download-dir=*)
-            download_dir=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --dry-run)
-            dry_run=1
-            prev_unknown_flag=0
-            ;;
-        --dedupe)
-            dedupe=1
-            prev_unknown_flag=0
-            ;;
-        --images)
-            images=1
-            prev_unknown_flag=0
-            ;;
-        --quiet)
-            quiet=1
-            prev_unknown_flag=0
-            ;;
-        --aria-opts)
-            (( $# > 0 )) || need_value "$arg"
-            aria_opts=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --aria-opts=*)
-            aria_opts=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --max-speed)
-            (( $# > 0 )) || need_value "$arg"
-            max_speed=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --max-speed=*)
-            max_speed=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --limit-speed)
-            (( $# > 0 )) || need_value "$arg"
-            limit_speed=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --limit-speed=*)
-            limit_speed=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --name)
-            (( $# > 0 )) || need_value "$arg"
-            custom_name=$1
-            shift
-            prev_unknown_flag=0
-            ;;
-        --name=*)
-            custom_name=${arg#*=}
-            prev_unknown_flag=0
-            ;;
-        --)
-            while (( $# > 0 )); do
-                raw_args+=("$1")
-                raw_kind+=("pos")
-                shift
-            done
-            prev_unknown_flag=0
-            ;;
-        -*)
-            raw_args+=("$arg")
-            raw_kind+=("pass")
-            prev_unknown_flag=1
-            ;;
-        *)
-            raw_args+=("$arg")
-            if (( prev_unknown_flag )); then
-                raw_kind+=("pos-after-flag")
-            else
-                raw_kind+=("pos")
-            fi
-            prev_unknown_flag=0
-            ;;
-    esac
+for _lib in ui helpers images downloads args settings collect paths classify ytdlp plan; do
+    # shellcheck source=/dev/null  # resolved at runtime
+    # shellcheck disable=SC1090
+    source "$vdl_lib/$_lib.sh"
 done
 
-# ---------------------------------------------------------------------------
-# 2. Resolve browser, quality and mode
-# ---------------------------------------------------------------------------
-read_vdl_config
+# 1-4. Parse, resolve settings, collect URLs, set up paths.
+parse_args "$@"
+resolve_settings
+collect_urls
+setup_paths
 
-# Manual cookies file and root-only Firefox import.  CLI flags have already
-# been captured, so only fill in values from the environment/config file.
-[[ -z $cookies_file && -n ${VDL_COOKIES:-} ]] && cookies_file=$VDL_COOKIES
-if (( ! root_cookies )); then
-    case ${VDL_ROOT_COOKIES:-} in
-        1|yes|firefox) root_cookies=1 ;;
-    esac
-fi
-
-if (( no_cookies )); then
-    [[ -n $cookies_file ]] && warn "--no-cookies ignores the cookies file"
-    (( root_cookies )) && warn "--no-cookies ignores --root-cookies"
-    cookies_file=''
-    root_cookies=0
-fi
-
-cookies_file=${cookies_file/#\~/$HOME}
-
-if [[ -n $cookies_file && ! -f $cookies_file ]]; then
-    err "Cookies file not found: $cookies_file"
-    exit 2
-fi
-
-if (( root_cookies )); then
-    if ! is_termux; then
-        err "--root-cookies is only supported inside Termux"
-        exit 2
-    fi
-    if (( browser_set )); then
-        case ${browser_arg,,} in
-            firefox|firefox:*) ;;
-            *)
-                err "--root-cookies only supports Firefox; use --cookies for other browsers"
-                exit 2
-                ;;
-        esac
-    fi
-fi
-
-# Convert speed limits once, before any downloader runs.  Keeping them as
-# plain byte values avoids aria2c's rejection of "1.5M"/"1G" and the different
-# semantics of the two backends' rate options.
-max_speed_bytes=''
-if [[ -n $max_speed ]]; then
-    if ! max_speed_bytes=$(normalize_speed "$max_speed"); then
-        err "Invalid speed: $max_speed (try 1M, 500K, 1.5M)"
-        exit 2
-    fi
-fi
-limit_speed_bytes=''
-if [[ -n $limit_speed ]]; then
-    if ! limit_speed_bytes=$(normalize_speed "$limit_speed"); then
-        err "Invalid speed: $limit_speed (try 1M, 500K, 1.5M)"
-        exit 2
-    fi
-fi
-
-if (( no_cookies )); then
-    browser=none
-elif (( root_cookies )); then
-    # Staged later, once we know there is work to do and root is available.
-    browser=none
-elif (( browser_set )); then
-    browser=$browser_arg
-elif [[ -n ${VDL_BROWSER:-} ]]; then
-    browser=$VDL_BROWSER
-else
-    browser=$(detect_browser)
-fi
-
-if [[ $browser == *:* ]]; then
-    bname=${browser%%:*}
-    bprof=${browser#*:}
-    browser="${bname,,}:$bprof"
-else
-    browser=${browser,,}
-fi
-
-if [[ $browser != none ]]; then
-    case ${browser%%:*} in
-        vivaldi|firefox|brave|chromium|chrome|edge|opera|safari|whale) ;;
-        *)
-            err "Unknown browser: $browser"
-            printf '    Supported: vivaldi firefox brave chromium chrome edge opera safari whale none\n' >&2
-            exit 2
-            ;;
-    esac
-    if is_termux && [[ $browser != *:* ]] && (( ! root_cookies )); then
-        warn "Termux cannot read Android browser profiles; use --cookies FILE or --root-cookies"
-    fi
-fi
-
-if (( quality_set )); then
-    quality_raw=$quality_arg
-elif [[ -n ${VDL_QUALITY:-} ]]; then
-    quality_raw=$VDL_QUALITY
-else
-    quality_raw=1080
-fi
-if ! quality=$(normalize_quality "$quality_raw"); then
-    err "Invalid quality: $quality_raw (try 720, 1080, 2k, 4k)"
-    exit 2
-fi
-
-# ---------------------------------------------------------------------------
-# 3. Collect URLs, batch files and passthrough arguments
-# ---------------------------------------------------------------------------
-urls=()
-
-# raw_args preserves the original argument order.  Non-URL tokens, including
-# values belonging to unknown yt-dlp options, stay in passthru in that order;
-# only URL-shaped tokens and bare batch files are pulled out.
-for i in "${!raw_args[@]}"; do
-    arg=${raw_args[$i]}
-    case $arg in
-        http://*|https://*)
-            urls+=("$arg")
-            ;;
-        www.*)
-            urls+=("https://$arg")
-            ;;
-        magnet:*)
-            urls+=("$arg")
-            ;;
-        *.txt)
-            # A bare .txt is a batch file unless it is the value of an
-            # unknown flag (e.g. --download-archive archive.txt).
-            if [[ ${raw_kind[$i]} == pos && -f $arg ]]; then
-                batch_files+=("$arg")
-            else
-                passthru+=("$arg")
-            fi
-            ;;
-        *)
-            passthru+=("$arg")
-            ;;
-    esac
-done
-
-if (( ${#batch_files[@]} )); then
-    for f in "${batch_files[@]}"; do
-        if [[ ! -f $f ]]; then
-            warn "Batch file not found: $f"
-            continue
-        fi
-        while IFS= read -r line || [[ -n $line ]]; do
-            line=${line%$'\r'}
-            line=${line#"${line%%[![:space:]]*}"}
-            line=${line%"${line##*[![:space:]]}"}
-            if [[ $line =~ ^https?:// ]]; then
-                urls+=("$line")
-            fi
-        done < "$f"
-    done
-fi
-
-if (( ${#urls[@]} == 0 )); then
-    if clip=$(read_clipboard) && [[ $clip =~ ^https?:// ]]; then
-        urls+=("$clip")
-        note "Auto-grabbed URL from clipboard"
-    else
-        err "No valid URL, batch file, or clipboard link found."
-        printf '    Run vdl --help for usage.\n' >&2
-        exit 1
-    fi
-fi
-
-# Remove duplicates while preserving order.
-declare -A seen=()
-declare -a uniq_urls=()
-for u in "${urls[@]}"; do
-    [[ -n ${seen[$u]:-} ]] && continue
-    seen[$u]=1
-    uniq_urls+=("$u")
-done
-urls=("${uniq_urls[@]}")
-
-# Root-only Firefox cookie import: copy the Android Firefox cookie database
-# into Termux's cache so yt-dlp (running as the Termux UID) can read it.
-if (( root_cookies )); then
-    if ! root_profile=$(termux_root_firefox_profile); then
-        err "Could not import Firefox Android cookies via root"
-        printf '    Check that the device is rooted, Firefox is installed, and su grants Termux access.\n' >&2
-        printf '    Android Chrome/Chromium cookies are encrypted; export cookies.txt and use --cookies.\n' >&2
-        exit 1
-    fi
-    browser="firefox:$root_profile"
-    note "Imported Firefox Android cookies via root"
-fi
-
-cookie_label=''
-if (( root_cookies )); then
-    cookie_label='firefox (root)'
-elif [[ $browser != none ]]; then
-    cookie_label=$browser
-fi
-if [[ -n $cookies_file ]]; then
-    if [[ -n $cookie_label ]]; then
-        cookie_label+=" + $(basename -- "$cookies_file")"
-    else
-        cookie_label="file: $(basename -- "$cookies_file")"
-    fi
-fi
-
-declare -a yt_cookie_args=()
-[[ $browser != none ]] && yt_cookie_args+=( --cookies-from-browser "$browser" )
-[[ -n $cookies_file ]] && yt_cookie_args+=( --cookies "$cookies_file" )
-
-# --name applies to a single URL; remember it before images are appended.
-named_url=''
-if [[ -n $custom_name ]]; then
-    if (( ${#urls[@]} != 1 )); then
-        err "--name works with a single URL"
-        exit 2
-    fi
-    named_url=${urls[0]}
-fi
-
-# ---------------------------------------------------------------------------
-# 4. Paths and dependencies
-# ---------------------------------------------------------------------------
-if [[ -n $download_dir ]]; then
-    save_dir=$download_dir
-elif [[ -n ${VDL_SAVE_DIR:-} ]]; then
-    save_dir=$VDL_SAVE_DIR
-else
-    download_base=''
-    if is_termux; then
-        if [[ -d $HOME/storage/downloads ]]; then
-            download_base=$HOME/storage/downloads
-        else
-            download_base=$HOME/Downloads
-            note "Termux shared storage is not set up; using $download_base"
-            note "Run 'termux-setup-storage' to make downloads visible to Android apps"
-        fi
-    elif have xdg-user-dir; then
-        download_base=$(xdg-user-dir DOWNLOAD 2>/dev/null) || download_base=''
-    fi
-    if [[ -z $download_base || $download_base == "$HOME" ]]; then
-        download_base=$HOME/Downloads
-    fi
-    save_dir=$download_base/vdl
-fi
-save_dir=${save_dir/#\~/$HOME}
-tmp_dir=$save_dir/.tmp
-tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
-[[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
-cleanup_tmp() {
-    [[ -d $tmp_dir ]] || return 0
-    find "$tmp_dir" -mindepth 1 -type f -mtime +"$tmp_keep_days" -delete 2>/dev/null || true
-    find "$tmp_dir" -mindepth 1 -type d -empty -mtime +0 -delete 2>/dev/null || true
-    rmdir "$tmp_dir" 2>/dev/null || true
-}
-
-# Android can suspend Termux when the screen turns off.  When the Termux:API
-# app provides the wake-lock command, hold one for the duration of the run.
-termux_wakelock=0
-if (( ! dry_run )) && is_termux \
-    && [[ ${VDL_WAKELOCK:-1} != 0 && ${VDL_WAKELOCK:-1} != no ]] \
-    && have termux-wake-lock; then
-    if termux-wake-lock >/dev/null 2>&1; then
-        termux_wakelock=1
-    fi
-fi
-
-# shellcheck disable=SC2317,SC2329  # exit trap handler
-cleanup_all() {
-    cleanup_tmp
-    if (( termux_wakelock )); then
-        termux-wake-unlock >/dev/null 2>&1 || true
-    fi
-}
-trap cleanup_all EXIT
-
-# Ctrl+C: finished items have already been moved to their final folders;
-# only the download in flight stays in the temp dir.  Tell the user how to
-# pick up where they left off instead of dying silently.
-# shellcheck disable=SC2317,SC2329  # signal handler, invoked via trap
-on_interrupt() {
-    trap - INT
-    printf '\n'
-    warn "Interrupted — completed downloads were moved to their folders; run the same command again to resume the rest."
-    exit 130
-}
-trap on_interrupt INT
-
-if (( audio )); then
-    out_dir=$save_dir/audio
-else
-    out_dir=$save_dir
-fi
-
-have_aria=0
-have aria2c && have_aria=1
-
-# ---------------------------------------------------------------------------
-# 5. Split URLs into direct files and media/page URLs, then scan for images
-# ---------------------------------------------------------------------------
+# 5-6. Classify, scan for images, resolve names, build yt-dlp defaults.
 declare -a direct=()
 declare -a media=()
-
-for u in "${urls[@]}"; do
-    if url_is_direct "$u"; then
-        direct+=("$u")
-    else
-        media+=("$u")
-    fi
-done
-
-direct_via_ytdlp=0
 declare -a direct_pending=()
-
 declare -a img_urls=()
 declare -a img_refs=()
 declare -a img_dirs=()
+declare -a scan_pages=()
+declare -A scan_do=()
+declare -A scan_title=()
+declare -a yt_common=()
 
-scrape_images
+classify_urls
+build_yt_common
 
-if (( ${#direct[@]} )); then
-    if (( ! have_aria || no_aria )); then
-        direct_via_ytdlp=1
-        direct_pending=("${direct[@]}")
-        if (( have_aria )); then
-            note "--no-aria: direct files will be fetched with yt-dlp"
-        else
-            note "aria2c not installed: direct files will be fetched with yt-dlp"
-        fi
-    fi
-fi
-
-# Resolve --name into the concrete output names.  For a direct file the
-# extension is appended literally when the user's name lacks one; for a
-# media download the yt-dlp template %(ext)s is used so the real container
-# extension wins.  In audio mode the extension is always mp3.
-custom_direct=''
-custom_media=''
-if [[ -n $custom_name ]]; then
-    ext=''
-    uext=${named_url##*/}
-    uext=${uext%%\?*}
-    uext=${uext%%#*}
-    case $uext in
-        *.*) ext=${uext##*.} ;;
-    esac
-    ext=${ext,,}
-    [[ $ext =~ ^[a-z0-9]{1,8}$ ]] || ext=''
-    (( audio )) && ext=mp3
-
-    if [[ $custom_name == *.* ]]; then
-        custom_direct=$custom_name
-        custom_media=$custom_name
-    else
-        custom_direct=$custom_name
-        [[ -n $ext ]] && custom_direct=$custom_name.$ext
-        custom_media=$custom_name.'%(ext)s'
-    fi
-
-    if (( ${#direct[@]} )); then
-        (( ${#direct[@]} == 1 )) || { err "--name works with a single direct file"; exit 2; }
-    elif (( ${#media[@]} )); then
-        (( ${#media[@]} == 1 )) || { err "--name works with a single media item"; exit 2; }
-        # A playlist URL: NAME becomes the folder name instead of a single
-        # filename.  One light probe tells the two cases apart.
-        if (( ! dry_run )) && have yt-dlp; then
-            pl_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
-                ${yt_cookie_args[@]+"${yt_cookie_args[@]}"} \
-                --print '%(playlist_count)s' -- "${media[0]}" 2>/dev/null)
-            pl_out=${pl_out##*$'\n'}
-            if [[ $pl_out =~ ^[0-9]+$ ]]; then
-                folder=$(sanitize_title "$custom_name")
-                [[ -n $folder ]] || folder=$custom_name
-                custom_media="${folder}/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s"
-            fi
-        fi
-    elif (( ${#img_urls[@]} )); then
-        note "--name ignored: this page only yields embedded images"
-        custom_name=''
-        custom_direct=''
-        custom_media=''
-    fi
-fi
-
-need_ytdlp=0
-(( ${#media[@]} )) && need_ytdlp=1
-(( direct_via_ytdlp )) && need_ytdlp=1
-
-if (( need_ytdlp )) && ! have yt-dlp; then
-    err "yt-dlp is required but was not found in PATH"
-    exit 1
-fi
-
-if (( audio )) && (( ${#media[@]} )) && ! have ffmpeg; then
-    err "ffmpeg is required for audio extraction (-a)"
-    exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# 6. yt-dlp defaults (self-contained; ignores ~/.config/yt-dlp/config)
-# ---------------------------------------------------------------------------
-extra_conf=${VDL_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/vdl/yt-dlp.conf}
-
-declare -a yt_common=( --ignore-config )
-if [[ -f $extra_conf ]]; then
-    yt_common+=( --config-locations "$extra_conf" )
-fi
-(( ${#yt_cookie_args[@]} )) && yt_common+=( "${yt_cookie_args[@]}" )
-yt_common+=(
-    --socket-timeout 15
-    --retries 10
-    --fragment-retries 10
-    --continue
-    --no-overwrites
-)
-(( quiet )) && yt_common+=( --quiet )
-(( ! quiet )) && yt_common+=(
-    --progress --console-title
-    --progress-template 'download:%(progress._percent_str)s | %(progress._downloaded_bytes_str)s/%(progress._total_bytes_str)s | %(progress._speed_str)s | ETA %(progress._eta_str)s'
-)
-
-# yt-dlp exposes one per-download rate limit, so when both limits are set use
-# the stricter one.  A zero rate means "unlimited" and is ignored here.
-yt_speed=''
-if [[ -n $max_speed_bytes && $max_speed_bytes != 0 ]]; then
-    yt_speed=$max_speed_bytes
-fi
-if [[ -n $limit_speed_bytes && $limit_speed_bytes != 0 ]]; then
-    if [[ -z $yt_speed || $limit_speed_bytes -lt $yt_speed ]]; then
-        yt_speed=$limit_speed_bytes
-    fi
-fi
-[[ -n $yt_speed ]] && yt_common+=( --limit-rate "$yt_speed" )
-
-impersonate=''
-if (( ! no_impersonate )) && (( need_ytdlp )); then
-    imp_target=${VDL_IMPERSONATE:-auto}
-    if [[ $imp_target != off && $imp_target != none ]]; then
-        imp_list=''
-        if have yt-dlp; then
-            imp_list=$(yt-dlp --ignore-config --list-impersonate-targets 2>/dev/null) || imp_list=''
-        fi
-        if [[ $imp_target == auto ]]; then
-            for candidate in chrome firefox safari; do
-                if imp_target_available "$imp_list" "$candidate"; then
-                    impersonate=$candidate
-                    break
-                fi
-            done
-        elif imp_target_available "$imp_list" "$imp_target"; then
-            impersonate=$imp_target
-        else
-            warn "yt-dlp cannot impersonate '$imp_target'; --impersonate ignored"
-        fi
-    fi
-fi
-
-# Header strings
-if (( ${#direct[@]} )) && (( ${#media[@]} )); then
-    engine="hybrid (aria2c + yt-dlp)"
-elif (( ${#direct[@]} )); then
-    if (( direct_via_ytdlp )); then
-        engine="yt-dlp direct (native, 1 connection)"
-    else
-        engine="aria2c direct (16 connections)"
-    fi
-elif (( ${#media[@]} )); then
-    if (( have_aria && ! no_aria )); then
-        engine="yt-dlp + aria2c"
-    else
-        engine="yt-dlp native"
-    fi
-elif (( ${#img_urls[@]} )); then
-    if (( have_aria && ! no_aria )); then
-        engine="embedded images (aria2c)"
-    else
-        engine="embedded images (yt-dlp)"
-    fi
-else
-    engine="idle"
-fi
-
-if (( audio )); then
-    mode="audio only (MP3 320k)"
-elif (( ${#direct[@]} )) && (( ${#media[@]} == 0 )); then
-    mode="direct file download"
-elif (( ${#media[@]} == 0 )) && (( ${#img_urls[@]} )); then
-    mode="embedded images"
-else
-    mode="video (max ${quality}p, MP4 preferred)"
-fi
-
-display_dir=$out_dir
-if [[ $display_dir == "$HOME"* ]]; then
-    display_dir="~${display_dir#"$HOME"}"
-fi
-
-print_banner
-
-mkdir -p "$save_dir" || exit 1
-if (( audio )); then
-    mkdir -p "$out_dir" || exit 1
-fi
-
-# --dry-run: print the resolved plan and exit without downloading.
-if (( dry_run )); then
-    printf '%sURLs:%s\n' "$C_GRN" "$C_OFF"
-    for u in "${urls[@]}"; do
-        printf '   %s\n' "$u"
-    done
-    printf '%sDirect:  %d  Media: %d\n' "" "${#direct[@]}" "${#media[@]}"
-    printf '%sImpersonate: %s\n' "" "${impersonate:-none}"
-    printf '\n%s(dry-run — nothing downloaded)%s\n' "$C_DIM" "$C_OFF"
-    exit 0
-fi
+# 7. Print the plan (banner, directories, --dry-run exit).
+build_header
+print_plan
 
 rc=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
 img_ok=0 img_fail=0
 aria_attempted=0
+zip_created=''
+declare -a failed_items=()
 dedupe_mark=$(date +%s)
 
-# ---------------------------------------------------------------------------
-# 7. Download: direct files, embedded images, media/pages
-# ---------------------------------------------------------------------------
+# 8. Download: direct files, media/pages, then scan and download images.
 download_directs
-download_images
+ui_run_progress
 download_pending_directs
+ui_run_progress
 download_media
+ui_run_progress
+scrape_images
+download_images
+ui_run_progress
 
-# ---------------------------------------------------------------------------
-# 8. Tidy up, dedupe, summarize
-# ---------------------------------------------------------------------------
+# 9. Tidy up, dedupe, summarize.
 cleanup_tmp
-
 dedupe_saved
-
+archive_run
 print_summary
 
 exit "$rc"

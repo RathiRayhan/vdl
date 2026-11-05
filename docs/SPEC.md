@@ -1,6 +1,6 @@
 # vdl — Behavior Contract (SPEC)
 
-This file is the single source of truth for how vdl should behave.  Keep it
+This file is the single source of truth for how vdl should behave. Keep it
 in sync with the code when features change; use it as the contract when
 editing, refactoring, or asking an AI to modify the project.
 
@@ -8,46 +8,62 @@ editing, refactoring, or asking an AI to modify the project.
 
 | Path | Role |
 |------|------|
-| `bin/vdl` | Orchestrator: argument parsing, option resolution, pipeline wiring |
+| `bin/vdl` | Orchestrator: sources the libraries and runs the pipeline in order |
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
-| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection/root Firefox cookie staging |
+| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection and root Firefox cookie staging |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
+| `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
+| `lib/vdl/settings.sh` | Browser/quality/speed resolution (`resolve_settings`) |
+| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, `--name`/`--output` validation (`collect_urls`) |
+| `lib/vdl/paths.sh` | Save dir, temp dir, traps, `--output` repointing (`setup_paths`) |
+| `lib/vdl/classify.sh` | Direct/media split, image scan, name resolution, tool checks (`classify_urls`) |
+| `lib/vdl/ytdlp.sh` | yt-dlp defaults and impersonation (`build_yt_common`) |
+| `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
 | `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
 | `test/smoke.sh` | Stub-based CLI tests (no network) |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
-| `docs/TERMUX.md` | Termux setup, storage, cookie, and background guide |
+| `docs/TERMUX.md` | Detailed Termux setup, storage, cookie, and background guide |
 | `docs/SPEC.md` | This file |
 
-`bin/vdl` sources the libraries from `../lib/vdl` relative to the script, so
-the same relative layout works from the repo and from any install prefix.
+`bin/vdl` sources the libraries from `../lib/vdl` relative to the real
+script path (symlinks are resolved), so the same relative layout works from
+the repo and from any install prefix.
 
 ## Pipeline
 
 1. **Parse arguments** — vdl flags are consumed; unknown options and their
    values are kept in order for yt-dlp; URL-shaped tokens and bare `.txt`
    batch files are extracted.  `--` ends vdl option parsing.
-2. **Resolve settings** — precedence: command line > environment > vdl config
-   file > defaults.  Browser, cookies file, quality, audio mode, and speed
-   limits are validated here.  `-n` clears both browser and file cookies.
-3. **Collect URLs** — arguments, batch files (lines starting with
-   `http://`/`https://`), or the clipboard when none were given; duplicates
-   removed, order preserved.  `--root-cookies` is staged after this step, so
-   a usage error never prompts for root.
-4. **Classify** — `url_is_direct` (helpers.sh) implements the single routing
-   rule.  See the routing table below.
-5. **Scan for images (opt-in)** — only with `--images`/`VDL_IMAGES=1` and
-   only for media URLs; see the image contract below.
-6. **Plan** — engine/mode strings, `need_ytdlp`, ffmpeg requirement, banner,
-   `--dry-run` exit.
-7. **Download** — direct files via aria2c (`-Z`, 16 connections) with yt-dlp
-   fallback for failed files; embedded images via aria2c per source page
-   (referer + browser UA) with yt-dlp fallback; media via a single yt-dlp
-   invocation (aria2c for http(s), native for HLS/DASH).
-8. **Finish** — temp cleanup, `--dedupe`, summary, exit.
+2. **Resolve settings** — precedence: command line > environment > vdl
+   config file > defaults.  Browser, cookies file, quality, audio mode, and
+   speed limits are validated here.  `-n` clears browser and file cookies.
+3. **Collect URLs** — arguments (multi-line pasted blocks are split into
+   one URL per line; blank and non-URL lines in a paste are ignored), batch
+   files (lines starting with `http://`/`https://`), or the clipboard when
+   none were given; duplicates removed, order preserved.  On Termux,
+   `--root-cookies` is staged after URL validation, so a usage error never
+   prompts for root.
+4. **Set up paths** — save dir (Termux shared storage when available), temp
+   dir (`<save_dir>/.tmp`), EXIT/INT traps, optional Termux wake lock, and
+   the `--output` repointing.
+5. **Classify** — `url_is_direct` implements the routing rule; `--name`/
+   `--output` are resolved; yt-dlp/ffmpeg requirements are checked.  With
+   `--images`, a light preflight probes each media page's extractor so
+   image-only pages can be dropped from the media queue early.
+6. **Build yt-dlp defaults** — `yt_common` (ignore-config, retries,
+   progress template, rate limit, browser/file cookies) and impersonation
+   probing.
+7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
+8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
+   name without `-Z`) with yt-dlp fallback for failed files; media via a
+   single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
+   **then**, with `--images`, the pages are scanned for images and the
+   photos are downloaded, so videos always finish first.
+9. **Finish** — temp cleanup, `--dedupe`, `--zip`, summary, exit.
 
-## Routing table (`url_is_direct`)
+## Routing rule (`url_is_direct`)
 
 | URL | Engine |
 |-----|--------|
@@ -65,7 +81,7 @@ The check uses the **last** path extension, so stacked suffixes such as
 |------|---------|
 | 0 | all downloads finished (or nothing failed) |
 | 1 | runtime failure (missing yt-dlp/ffmpeg, downloads failed) |
-| 2 | usage error (bad flag value, invalid speed/quality/browser) |
+| 2 | usage error (bad flag value, invalid speed/quality/browser, `--name`/`--output` with multiple URLs) |
 | 130 | interrupted by Ctrl+C |
 
 ## Key state (owned by bin/vdl, shared with libs)
@@ -73,11 +89,15 @@ The check uses the **last** path extension, so stacked suffixes such as
 - `urls`, `direct`, `media`, `img_urls` (+ `img_refs`, `img_dirs`): URL queues.
 - `passthru`: unknown yt-dlp options in original order.
 - Counters: `direct_ok/direct_fail`, `media_ok/media_fail`, `img_ok/img_fail`, `rc`.
-- `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`.
-- `cookies_file`, `root_cookies`, `cookie_label`, `termux_wakelock`.
+- `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`,
+  `custom_direct`, `custom_media`, `out_folder_strip`.
+- `cookies_file`, `root_cookies`, `cookie_label`, `yt_cookie_args`,
+  `termux_wakelock`.
+- `scan_pages`, `scan_do`, `scan_title`, `failed_items`, `zip_created`,
+  `zip_mode`, `zip_name`.
 
 Libraries may read and update these globals but must not introduce new
-persistent state that bin/vdl does not know about.
+persistent state that `bin/vdl` does not declare.
 
 ## Backend mappings
 
@@ -91,26 +111,63 @@ fraction requires a suffix; `0` means unlimited.  yt-dlp receives the
 stricter non-zero value when both flags are set.
 
 - aria2c always runs with `-Z` (one download per URL; without it multiple
-  URLs are treated as mirrors of one file).
+  URLs are treated as mirrors of one file), except with a custom name,
+  where `-o` replaces `-Z` (single URL by contract).
 - Direct files: 16 connections, resume, no preallocation.
 - Embedded images: 4 connections, page URL as referer, browser UA.
+
+## Multi-line paste contract
+
+- A positional argument containing `\n` is split into one token per line;
+  whitespace and `\r` are trimmed.
+- URL-shaped lines become downloads; `.txt` lines that exist become batch
+  files; **other lines are ignored** (never forwarded to yt-dlp).
+- Values of unknown flags are never split.
+
+## Custom filename (`--name NAME`)
+
+- Single input URL only (exit 2 otherwise); cannot be combined with
+  `--output`.
+- Direct files: `NAME` with the URL's extension appended when NAME has
+  none; a NAME containing an extension is used verbatim.
+- Single media/audio item: appended as the last `-o` to yt-dlp (the last
+  one wins); without an extension the template `NAME.%(ext)s` is used so
+  the real container wins.  Audio mode always uses `.mp3`.
+- Playlist URL: a `%(playlist_count)s` probe detects the playlist and
+  `NAME` becomes the (sanitized) folder name — items keep their per-item
+  title template.
+- Embedded images keep their own names; on image-only pages `--name` is
+  ignored with a note.
+
+## Exact destination (`--output PATH`)
+
+- Single URL only; combining with `--name` is a usage error (exit 2).
+- The save directory is repointed before classification and the image
+  scanner, so every engine writes into PATH's directory.
+- A PATH whose last component has an extension is the exact file: direct
+  downloads use aria2c `-o`, media downloads append `-o` (last one wins).
+  Playlist URLs are rejected (exit 2, detected via `%(playlist_count)s`).
+- A PATH without an extension is the exact folder: the media item template
+  drops the `%(playlist_title)s` prefix, so playlist items land directly
+  inside PATH; audio mode also writes into PATH instead of `audio/`.
 
 ## Cookie contract
 
 - `--cookies FILE` / `VDL_COOKIES` / `COOKIES=` adds a yt-dlp `--cookies`
-  argument to every yt-dlp invocation (direct fallback, media, images).
-  A missing file is a usage error (exit 2).
+  argument to every yt-dlp invocation (direct fallback, media, image probes,
+  and image fallback).  A missing file is a usage error (exit 2).
 - `-b/--browser`, `VDL_BROWSER`, and auto-detection keep their existing
   behavior.  `-n/--no-cookies` clears both browser cookies and file cookies.
 - On Termux, auto-detection returns `none`: Android browser profiles are
-  app-private and desktop paths do not exist.
+  app-private and desktop paths do not exist.  An explicit profile path
+  (`-b firefox:/path`) still works.
 - `--root-cookies` / `VDL_ROOT_COOKIES=1|firefox` is Termux-only.  It requires
   `su` and a Firefox for Android package (`org.mozilla.firefox`,
   `org.mozilla.firefox_beta`, or `org.mozilla.fenix`), copies the first
   `cookies.sqlite` into `$XDG_CACHE_HOME/vdl/root-cookies/firefox` with
-  owner-only permissions, and
-  uses `firefox:<staged-dir>`.  Chrome/Chromium/Brave are not supported
-  because their Android cookie values are Keystore-encrypted.
+  owner-only permissions, and uses `firefox:<staged-dir>`.
+- Chrome/Chromium/Brave/Edge are not supported for root import because their
+  Android cookie values are Keystore-encrypted.  Export a `cookies.txt` file.
 
 ## Termux contract
 
@@ -125,22 +182,27 @@ stricter non-zero value when both flags are set.
 
 ## Embedded-image contract (`--images` / `VDL_IMAGES=1`)
 
-- Only pages whose yt-dlp extractor is `generic` or `html5` are scanned;
-  known-site extractors are skipped.  `--dry-run` never touches the network.
-- The page is fetched to a temp file and parsed only if it looks like HTML.
+- A light preflight probes each media page's extractor before downloading;
+  the probe uses the same browser/file cookies as media downloads.  Pages
+  whose yt-dlp extractor is not `generic`/`html5` are never scanned,
+  and pages with no video formats (image-only albums) are removed from the
+  media queue so yt-dlp does not fail on them.  `--dry-run` never touches
+  the network.
+- The heavy scan runs **after the media downloads**: each queued page is
+  fetched to a temp file and parsed only if it looks like HTML.
 - Candidates come from `<img src/data-src>` (both quote styles, `?v=...`
   stripped).  Excluded by name: favicon, apple-touch, logo, `/icons/`,
   `icon-`, avatar, `/thumbs/`.
 - Scoped to the album via the playlist's media URLs: same directory tree
-  (host-insensitive, `/thumb/` normalized) is kept; thumbnails whose basename
-  matches a media file (video covers) are skipped.
+  (host-insensitive, `/thumb/` normalized) is kept; thumbnails whose
+  basename matches a media file (video covers) are skipped.
 - `/thumb/` previews upgrade to the full-size image; a same-named `.jpg`
   sibling is probed for `.webp` previews.
 - Images save into the sanitized album/playlist folder (`sanitize_title`,
   matching yt-dlp's folder sanitization), or the save dir when no title
   exists.
-- A page with images but no video formats is an image-only album: the page is
-  removed from the media queue so yt-dlp does not fail on it.
+- The banner and `--dry-run` plan are printed before the scan, so they show
+  only the input URLs; scanned images appear in the run and the summary.
 
 ## Dedupe contract (`--dedupe`)
 
@@ -149,28 +211,26 @@ stricter non-zero value when both flags are set.
 - Same byte size, then identical SHA-256, then delete all but the oldest
   copy.  Pre-existing files can never be deleted.
 
-## Custom filename (`--name NAME`)
+## Zip contract (`--zip[=NAME.zip]`)
 
-- Applies to a single input URL only; more than one URL is a usage error
-  (exit 2).
-- Direct files: `NAME` with the URL's extension appended when NAME has none;
-  a NAME containing an extension is used verbatim.
-- Single media/audio item: appended as the last `-o` to yt-dlp (the last one
-  wins); without an extension the template `NAME.%(ext)s` is used so the
-  real container wins.  Audio mode always uses `.mp3`.
-- Playlist URL: a light `%(playlist_count)s` probe detects the playlist and
-  `NAME` becomes the (sanitized) folder name — items inside keep their
-  per-item title template.
-- Embedded images keep their own names; on image-only pages `--name` is
-  ignored with a note.
+- Runs after dedupe, using the same run window (files with `mtime >=` run
+  start, temp dir and partials excluded).
+- With no name, the archive is `vdl-<YYYYMMDD-HHMMSS>.zip`; an explicit name
+  gets `.zip` appended when missing.  The archive is created in the save
+  directory, with entries relative to it (playlist folders keep their
+  structure).
+- Requires the `zip` command; if missing, a warning is printed and the files
+  are left in place (downloads still succeed).
+- With no files downloaded in the run, a note is printed and no archive is
+  created.
 
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new
-  flag or routing change needs a case here. Includes manual cookies, Termux
-  save-directory selection, and `--termux` installer coverage.
-- `test/unit.sh` — pure functions (`normalize_speed`, `sanitize_title`,
-  `url_filename`, `url_is_direct`, `is_termux`); any new pure helper needs
-  cases here.
-- CI runs ShellCheck on `bin/vdl install.sh test/smoke.sh test/unit.sh` and
-  every `lib/vdl/*.sh`, then both test suites.
+  flag or routing change needs a case here.  Includes manual/root cookies,
+  Termux save-directory selection, and `--termux` installer coverage.
+- `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
+  `sanitize_title`, `url_filename`, `url_is_direct`, `is_termux`); any new
+  pure helper needs cases here.
+- CI runs ShellCheck (Ubuntu-packaged version) on `bin/vdl`, `install.sh`,
+  both test files, and every `lib/vdl/*.sh`, then both suites.

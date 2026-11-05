@@ -75,8 +75,12 @@ Termux:API app for a wake lock.
   aliases.
 - **Audio extraction** — `-a` downloads the best audio and converts it to MP3
   320k under `<save_dir>/audio`.
-- **Custom names** — `--name` renames a single file/video, or names a playlist
-  folder.
+- **Custom destinations** — `--name` names a single file/video or playlist
+  folder; `--output` pins a single URL to an exact file path or folder.
+- **Zip archiving** — `--zip[=NAME.zip]` packs everything downloaded in the
+  run into one archive after dedupe.
+- **Multi-line paste** — paste a block of URLs as one argument; vdl splits it
+  into one URL per line and ignores blank/non-URL lines.
 - **Playlist and album support** — entries are grouped into folders with
   predictable names.
 - **Cookie support** — manual Netscape `cookies.txt` files with `--cookies`;
@@ -98,6 +102,8 @@ Termux:API app for a wake lock.
   files through yt-dlp.
 - **Termux aware** — shared-storage defaults, automatic wake lock, and a
   dedicated installer mode.
+- **Run progress and failure recap** — a `[Run] n/m` counter after each
+  phase and a `Failed:` summary with per-URL reasons.
 - **Preview mode** — `--dry-run` shows the resolved plan without downloading.
 - **Quiet mode** — `--quiet` suppresses banners, status lines, and progress.
 
@@ -124,6 +130,7 @@ Termux:API app for a wake lock.
 | aria2c | fast direct downloads, torrents | `aria2` |
 | ffmpeg | MP3 extraction, merging, metadata | `ffmpeg` |
 | curl | embedded-image scanning | `curl` |
+| zip | `--zip` archiving | `zip` |
 | Termux:API app | wake lock | `termux-api` + Termux:API app |
 | Python pip | optional `curl_cffi` install | `python-pip` |
 
@@ -144,7 +151,7 @@ official Termux GitHub releases. Install the core toolchain:
 
 ```sh
 pkg update
-pkg install git bash coreutils findutils gawk grep sed curl \
+pkg install git bash coreutils findutils gawk grep sed curl zip \
     aria2 python ffmpeg termux-api
 ```
 
@@ -256,6 +263,16 @@ vdl links.txt
 
 # A custom filename
 vdl --name my-archive "https://example.com/file.zip"
+
+# An exact destination (single URL)
+vdl --output ~/storage/downloads/movies/movie.mp4 "https://example.com/video"
+
+# Paste several URLs at once
+vdl 'https://example.com/one
+https://example.com/two'
+
+# Archive this run's downloads
+vdl --zip=my-batch.zip links.txt
 
 # Preview routing and options without downloading
 vdl --dry-run "https://example.com/file.iso"
@@ -499,6 +516,8 @@ Run `vdl --help` for the complete list. The most useful options on Termux:
 | `--root-cookies` | Import Firefox Android cookies via root |
 | `--download-dir DIR` | Override the save directory |
 | `--name NAME` | Custom filename, or playlist folder name |
+| `--output PATH` | Exact file path or folder for a single URL |
+| `--zip[=NAME.zip]` | Archive this run's downloads |
 | `--no-aria` | Send direct files through yt-dlp |
 | `--no-impersonate` | Disable TLS impersonation |
 | `--images` | Download images embedded in album pages |
@@ -600,6 +619,46 @@ vdl --name my-album "https://example.com/playlist"
 
 `--name` requires exactly one input URL.
 
+### Exact destination
+
+`--output` pins a single URL to an exact file path or folder:
+
+```sh
+vdl --output ~/storage/downloads/movies/movie.mp4 "https://example.com/video"
+vdl --output ~/storage/downloads/season1 "https://example.com/playlist"
+```
+
+A path whose final component has an extension is the exact file; anything
+else is the exact folder. Playlist items go directly inside the folder with
+no title-named subfolder. `--output` requires one URL and cannot be combined
+with `--name`.
+
+### Zip archive
+
+After a multi-URL or batch run, pack everything downloaded in that run into
+one zip:
+
+```sh
+vdl --zip url1 url2 url3            # -> vdl-YYYYMMDD-HHMMSS.zip
+vdl --zip=my-batch.zip links.txt    # explicit name
+```
+
+`--zip` runs after `--dedupe`, includes playlist folders, and only includes
+files downloaded in the current run. The `zip` package is required; without
+it vdl warns and leaves the files in place.
+
+### Multi-line paste
+
+A pasted block of URLs can be passed as one argument:
+
+```sh
+vdl 'https://example.com/one
+https://example.com/two'
+```
+
+URL lines become downloads, `.txt` lines that exist become batch files, and
+blank or non-URL lines are ignored. Flags apply to every URL in the block.
+
 ### Audio
 
 ```sh
@@ -616,8 +675,12 @@ vdl --images "https://example.com/album/123"
 ```
 
 For generic or HTML5 album pages, vdl scans for `<img>` links and downloads
-them into the album folder. Known-site extractors such as YouTube are not
-scanned. This is opt-in because it adds page requests.
+them into the album folder. Videos download first; the page scan and image
+downloads run afterward, so media always finishes before photos. Known-site
+extractors such as YouTube are not scanned. This is opt-in because it adds
+page requests. It comes in handy for photo galleries, manga chapters,
+product photos, and teardown guides — anywhere a site serves its images as
+plain HTML.
 
 ### Duplicate cleanup
 
@@ -687,6 +750,24 @@ vdl --quiet "https://example.com/video"
 
 `--dry-run` resolves routing, quality, cookies, and impersonation without
 downloading.
+
+### Run progress and output
+
+After each phase, vdl prints a batch-level progress line:
+
+```text
+  [Run] 2/3 · 1 failed
+```
+
+Failed downloads are recapped in the summary with their reason:
+
+```text
+Failed:
+  [fail] https://example.com/video — yt-dlp exit 1
+```
+
+The yt-dlp bar adapts to the terminal width; aria2c keeps its native
+per-file progress line. `--quiet` suppresses all of vdl's own output.
 
 ### Interrupting and resuming
 
@@ -796,6 +877,17 @@ FAT/exFAT cards cannot store files larger than 4 GB and may reject characters
 such as `:`, `?`, `*`, `<`, `>`, or `|`. Use internal storage, or pass
 `--windows-filenames` for yt-dlp names.
 
+### `--zip` says zip is missing
+
+```sh
+pkg install zip
+```
+
+### `--output` rejects the command
+
+`--output` works with exactly one URL and cannot be combined with `--name`.
+Use `--name` for a custom filename or `--download-dir` for a batch folder.
+
 ## Termux limitations
 
 - **No Android GUI.** This is a terminal tool.
@@ -823,7 +915,8 @@ The repository layout:
 
 ```text
 bin/vdl               command entry point and orchestration
-lib/vdl/              ui, helpers, images, and download engines
+lib/vdl/              ui, helpers, args, settings, collect, paths,
+                      classify, ytdlp, plan, images, downloads
 install.sh            installer/uninstaller with --termux support
 completions/          bash, zsh, and fish completions
 man/vdl.1             man page
@@ -866,7 +959,7 @@ rm -rf ~/.config/vdl ~/.cache/vdl
 Optionally remove packages that are no longer used:
 
 ```sh
-pkg uninstall aria2 ffmpeg python-yt-dlp yt-dlp-ejs
+pkg uninstall aria2 ffmpeg python-yt-dlp yt-dlp-ejs zip
 # also remove your yt-dlp JavaScript runtime:
 # pkg uninstall deno    # 64-bit
 # pkg uninstall nodejs  # 32-bit
