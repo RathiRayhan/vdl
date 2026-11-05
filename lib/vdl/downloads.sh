@@ -156,6 +156,7 @@ download_directs() {
         case ${u,,} in
             magnet:*|*.torrent)
                 direct_fail=$((direct_fail + 1))
+                failed_items+=("$u|aria2c failed")
                 ui_result 1 "$(ui_name "$u")"
                 continue
                 ;;
@@ -202,6 +203,7 @@ download_pending_directs() {
         rc=1
         direct_fail=$((direct_fail + ${#direct_pending[@]}))
         for u in "${direct_pending[@]}"; do
+            failed_items+=("$u|yt-dlp not found")
             ui_result 1 "$(ui_name "$u")"
         done
         return 0
@@ -234,6 +236,7 @@ download_pending_directs() {
         (( u_rc )) && rc=$u_rc
         if (( u_rc )); then
             direct_fail=$((direct_fail + 1))
+            failed_items+=("$u|yt-dlp exit $u_rc")
         else
             direct_ok=$((direct_ok + 1))
         fi
@@ -318,6 +321,9 @@ download_media() {
         media_ok=${#media[@]}
     else
         media_fail=${#media[@]}
+        for u in "${media[@]}"; do
+            failed_items+=("$u|yt-dlp exit $media_rc")
+        done
     fi
     for u in "${media[@]}"; do
         ui_result $media_rc "$u"

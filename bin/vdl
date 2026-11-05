@@ -71,13 +71,18 @@ direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
 img_ok=0 img_fail=0
 aria_attempted=0
 zip_created=''
+declare -a failed_items=()
 dedupe_mark=$(date +%s)
 
 # 8. Download: direct files, embedded images, media/pages.
 download_directs
+ui_run_progress
 download_images
+ui_run_progress
 download_pending_directs
+ui_run_progress
 download_media
+ui_run_progress
 
 # 9. Tidy up, dedupe, summarize.
 cleanup_tmp

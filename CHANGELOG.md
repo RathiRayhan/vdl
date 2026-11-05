@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--output` (exact file path or folder for a single URL).
 - Zip archiving: `--zip[=NAME.zip]` packs a run's downloads into a single
   archive in the save directory (runs after `--dedupe`; requires `zip`).
+- UI polish: a run-level `[Run] n/m` progress counter after each phase, a
+  `Failed:` recap in the summary with per-URL reasons, a scanning indicator
+  during `--images`, and a terminal-width-adaptive progress bar.
 - Configuration: `VDL_*` environment variables and a `KEY=VALUE` config
   file with CLI > environment > config > defaults precedence.
 - Browser cookies (auto-detected or `-b NAME:PROFILE`), TLS impersonation

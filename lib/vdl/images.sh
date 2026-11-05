@@ -40,6 +40,8 @@ scrape_images() {
             *) media_kept+=("$u"); continue ;;
         esac
 
+        note "Scanning page for embedded images: $u"
+
         probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
             --print '%(extractor)s|%(playlist_title)s' -- "$u" 2>&1)
         probe_rc=$?
@@ -278,6 +280,7 @@ download_images() {
             err "yt-dlp is required to download the embedded images"
             img_fail=$((img_fail + ${#batch[@]}))
             for u in "${batch[@]}"; do
+                failed_items+=("$u|yt-dlp not found")
                 ui_result 1 "$(ui_name "$u")"
             done
             continue
@@ -297,6 +300,7 @@ download_images() {
             (( u_rc )) && rc=$u_rc
             if (( u_rc )); then
                 img_fail=$((img_fail + 1))
+                failed_items+=("$u|yt-dlp exit $u_rc")
             else
                 img_ok=$((img_ok + 1))
             fi

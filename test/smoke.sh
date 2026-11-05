@@ -322,10 +322,18 @@ fi
 export FAKE_ARIA_FAIL=yes
 run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
 unset FAKE_ARIA_FAIL
-if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out"; then
+if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out" \
+    && grep -q 'Failed:' "$out" && grep -q 'aria2c failed' "$out"; then
     ok
 else
-    bad "UI should mark failed downloads separately from retried ones"
+    bad "UI should mark failed downloads separately and recap them in the summary"
+fi
+
+run -n 'https://example.com/a.iso' 'https://example.com/b.iso'
+if grep -q '\[Run\] 2/2' "$out"; then
+    ok
+else
+    bad "a run-level progress line should appear after the phases"
 fi
 
 # --- embedded images on generic pages --------------------------------------
@@ -338,6 +346,7 @@ if arg_is 'https://cdn.example.com/album/pic1.jpg' \
     && ! arg_has 'avatar' && ! arg_has 'grid1' \
     && ! arg_has 'video1' && ! arg_has 'side' \
     && arg_is '-Z' && arg_is "$VDL_SAVE_DIR/Test Album" \
+    && grep -q 'Scanning page' "$err" \
     && called aria2c; then
     ok
 else

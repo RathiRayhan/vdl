@@ -52,8 +52,9 @@ one command the desktop-class pipeline:
 - Multiple connections per direct file with automatic resume.
 - yt-dlp for sites that require extractors, cookies, or stream handling.
 - Decisions made per URL, so mixed link lists work in one run.
-- Output that is usable in a terminal: a plan, per-URL status, a live
-  progress bar, and a final summary.
+- Output that is usable in a terminal: a plan, per-URL status, a run-level
+  `[Run] n/m` counter, a live progress bar, a failure recap, and a final
+  summary.
 
 ## Features
 

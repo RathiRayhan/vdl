@@ -408,8 +408,21 @@ completed files are skipped and the interrupted one continues.
 
 A normal run shows a banner (engine, mode, URL counts, save dir), section
 headers, per-URL status lines with `[ok]`/`[fail]`, and an end-of-run
-summary with per-engine results and elapsed time. yt-dlp downloads render as
-a live bar:
+summary with per-engine results and elapsed time. After each phase a
+run-level progress line tracks the whole batch:
+
+```
+  [Run] 2/3 · 1 failed
+```
+
+Failed downloads are recapped in the summary with their reason:
+
+```
+Failed:
+  [fail] https://example.com/video — yt-dlp exit 1
+```
+
+yt-dlp downloads render as a live bar whose width adapts to the terminal:
 
 ```
 [#########-----------] 43.3% 405KiB/488KiB | 149KiB/s | ETA 00:01
