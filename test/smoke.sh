@@ -427,6 +427,13 @@ else
     bad "a run-level progress line should appear after the phases"
 fi
 
+run -n 'https://example.com/watch?v=abc'
+if grep -q 'Run  1/1' "$out" && ! grep -q 'Run  0/' "$out"; then
+    ok
+else
+    bad "phases with no downloads yet should not print a zero progress line"
+fi
+
 # --- embedded images on generic pages --------------------------------------
 export FAKE_GENERIC_PAGE=yes
 run -n --no-impersonate --images 'https://example.com/watch?v=abc'
@@ -480,6 +487,23 @@ if run -n --download-dir "$ddir" 'https://example.com/file.iso' \
     ok
 else
     bad "--download-dir should be forwarded to aria2c as -d"
+fi
+
+# --- trailing slashes are normalized ----------------------------------------
+run -n --download-dir "$ddir/" 'https://example.com/file.iso'
+if arg_is -d && arg_is "$ddir" && ! arg_has "$ddir//" \
+    && ! grep -qF "$ddir/" "$out"; then
+    ok
+else
+    bad "a trailing slash in --download-dir should not survive into paths"
+fi
+
+run -n --no-impersonate --download-dir "$ddir/" 'https://example.com/watch?v=abc'
+if arg_has "home:$ddir" && ! arg_has "home:$ddir/" \
+    && ! grep -qF "$ddir/" "$out"; then
+    ok
+else
+    bad "media downloads should use the normalized directory"
 fi
 
 # --- speed limits ----------------------------------------------------------
@@ -660,6 +684,13 @@ if [[ $rc -eq 2 ]] && grep -q 'single URL' "$err"; then
     ok
 else
     bad "--output with multiple URLs should exit 2"
+fi
+
+run -n --output "$outdir/" 'https://example.com/file.iso'
+if arg_is -d && arg_is "$outdir" && ! arg_has "$outdir//"; then
+    ok
+else
+    bad "a trailing slash on an --output folder should be normalized"
 fi
 
 run -n --output x.iso --name y 'https://example.com/a.iso'
