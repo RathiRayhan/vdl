@@ -152,7 +152,7 @@ yt_bar() {
 print_banner() {
     (( quiet )) && return 0
     printf '\n%s===============================================%s\n' "$C_CYN" "$C_OFF"
-    printf '  %svdl %s%s  —  smart downloader\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
+    printf '  %svdl %s%s  —  Smart Downloader\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
     printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
     ui_row 'Engine' "$engine"
     ui_row 'Mode' "$mode"
@@ -178,13 +178,13 @@ print_summary() {
     ui_section "Summary"
     ui_row 'Total' "${#urls[@]}"
     if (( ${#direct[@]} )); then
-        ui_row 'Direct' "$direct_ok ok, $direct_fail failed"
+        ui_row 'Direct' "$direct_ok OK, $direct_fail Failed"
     fi
     if (( ${#media[@]} )); then
-        ui_row 'Media' "$media_ok ok, $media_fail failed"
+        ui_row 'Media' "$media_ok OK, $media_fail Failed"
     fi
     if (( ${#img_urls[@]} )); then
-        ui_row 'Images' "$img_ok ok, $img_fail failed"
+        ui_row 'Images' "$img_ok OK, $img_fail Failed"
     fi
     [[ -n ${zip_created:-} ]] && ui_row 'Archive' "$zip_created"
     if (( SECONDS >= 60 )); then
@@ -204,9 +204,9 @@ print_summary() {
     fi
     (( quiet )) || printf '\n'
     if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
-        ui_result 0 "all downloads finished"
+        ui_result 0 "All downloads finished"
     else
-        ui_result 1 "some downloads failed"
+        ui_result 1 "Some downloads failed"
     fi
     (( quiet )) || printf '\n'
 }

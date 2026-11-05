@@ -237,7 +237,7 @@ download_images() {
         return 0
     fi
 
-    ui_section "Embedded images"
+    ui_section "Embedded Images"
     for u in "${img_urls[@]}"; do
         ui_item "$(ui_name "$u")"
     done
