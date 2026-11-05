@@ -75,7 +75,7 @@ ui_run_progress() {
     local done=$(( direct_ok + direct_fail + media_ok + media_fail + img_ok + img_fail ))
     local total=$(( ${#direct[@]} + ${#media[@]} + ${#img_urls[@]} ))
     local failed=$(( direct_fail + media_fail + img_fail ))
-    (( total )) || return 0
+    (( total && done )) || return 0
     if (( failed )); then
         printf '  %sRun%s  %d/%d · %s%d failed%s\n' "$C_DIM" "$C_OFF" "$done" "$total" "$C_RED" "$failed" "$C_OFF"
     else

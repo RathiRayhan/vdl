@@ -20,6 +20,8 @@ setup_paths() {
         fi
         save_dir=$download_base/vdl
     fi
+    # A trailing slash would make joined paths show "dir//file".
+    [[ $save_dir != / ]] && save_dir=${save_dir%/}
     tmp_dir=$save_dir/.tmp
     tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
     [[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
@@ -90,6 +92,7 @@ setup_paths() {
             save_dir=$output_arg
             out_folder_strip=1
         fi
+        [[ $save_dir != / ]] && save_dir=${save_dir%/}
         tmp_dir=$save_dir/.tmp
         out_dir=$save_dir
     fi

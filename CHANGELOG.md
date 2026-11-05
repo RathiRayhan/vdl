@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-06
+
+### Fixed
+
+- A trailing slash in `--download-dir`, `--output` or `VDL_SAVE_DIR` no
+  longer produces `dir//file` paths (the slash is normalized away).
+- Empty download phases no longer print a zero-progress `Run 0/n` line;
+  the run counter appears only after something completes.
+
 ## [2.2.0] - 2026-11-06
 
 ### Changed

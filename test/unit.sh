@@ -101,5 +101,15 @@ assert_direct "bare page is media" 'https://h/page'   1
 assert_direct "html is media"      'https://h/f.html' 1
 assert_direct "txt is media"       'https://h/f.txt'  1
 
+# --- ui_run_progress hides zero-progress phases ------------------------------
+direct_ok=0 direct_fail=0 media_ok=0 media_fail=0 img_ok=0 img_fail=0
+direct=() media=(u) img_urls=()
+quiet=0
+expect_eq "progress hides 0-done phases" "$(ui_run_progress)" ''
+media_ok=1
+expect_eq "progress prints after completed work" "$(ui_run_progress)" '  Run  1/1'
+media_fail=1
+expect_eq "progress appends failure count" "$(ui_run_progress)" '  Run  2/1 · 1 failed'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1
