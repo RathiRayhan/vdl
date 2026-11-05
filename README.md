@@ -2,173 +2,430 @@
 
 [![CI](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Platform: Linux](https://img.shields.io/badge/platform-Linux-3DDC84)](https://www.linux.org/)
 
-**vdl** is a smart downloader for Linux. Give it any URL — a file, a video,
-a playlist, a magnet link — and it picks the right engine: **aria2c** for
-direct files (fast, resumable, multi-connection) and **yt-dlp** for pages,
-playlists, and streams. One command handles mixed input, browser cookies,
-speed limits, custom names, and embedded album images.
+A fast, resumable command-line downloader for Linux. `vdl` routes every URL
+to the right engine automatically:
+
+- **Direct files** — archives, disk images, documents, packages, plain video
+  files, magnet links, and `.torrent` files — go through **aria2c** with
+  multiple connections and resume support.
+- **Media** — YouTube and other supported sites, playlists, HLS, and DASH —
+  go through **yt-dlp** with quality limits, MP3 extraction, metadata, and
+  MP4 merging.
+- **Mixed input** is handled in one command. Direct files and media URLs are
+  split automatically and downloaded with their respective engines.
+
+`vdl` is pure Bash. There is no compiled component to build, no daemon, and
+no root requirement. Everything runs in your terminal and saves to your
+downloads folder.
+
+> A Termux/Android edition lives on the `termux` branch; this README is the
+> Linux reference.
+
+---
+
+## Contents
+
+- [Why vdl](#why-vdl)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Updating](#updating)
+- [Quick start](#quick-start)
+- [Advanced usage](#advanced-usage)
+- [Common options](#common-options)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [Uninstall](#uninstall)
+- [License](#license)
+
+---
+
+## Why vdl
+
+Browsers and standalone download managers each do half the job. `vdl` gives
+one command the desktop-class pipeline:
+
+- One command for direct files, torrents, videos, and audio.
+- Multiple connections per direct file with automatic resume.
+- yt-dlp for sites that require extractors, cookies, or stream handling.
+- Decisions made per URL, so mixed link lists work in one run.
+- Output that is usable in a terminal: a plan, per-URL status, a live
+  progress bar, and a final summary.
 
 ## Features
 
-- **Smart per-URL routing** — direct files, torrents and magnets go to
-  aria2c; pages, playlists and streams go to yt-dlp; mixed lists use both.
-- **Fast, resumable downloads** — 16 aria2c connections per direct file,
-  resume support, and 10 connections for media transfers.
-- **Flexible input** — multiple URLs, pasted multi-line URL blocks, batch
-  files, and clipboard pickup; duplicates are removed automatically.
-- **Media handling** — configurable quality cap (`-q`, `2k`/`4k`/`8k`
-  aliases), MP4 merging, HLS/DASH via yt-dlp's native downloader.
-- **Audio extraction** — `-a` converts to MP3 320k under
-  `<save_dir>/audio`.
-- **Browser integration** — auto-detects cookies from your browser
-  (`firefox:work` profiles supported), `-n` to disable, and optional TLS
-  impersonation.
-- **Exact destinations** — `--name` renames a file or playlist folder,
-  `--output` pins a URL to an exact file path or folder.
+- **Smart routing** — aria2c for files and torrents, yt-dlp for pages,
+  playlists, and streams; one invocation can use both.
+- **Resumable transfers** — interrupted direct files continue from where
+  they stopped; yt-dlp keeps its own partial state under `<save_dir>/.tmp`.
+- **Quality control** — default 1080p cap, with `720`, `2k`, `4k`, and `8k`
+  aliases.
+- **Audio extraction** — `-a` downloads the best audio and converts it to
+  MP3 320k under `<save_dir>/audio`.
+- **Custom destinations** — `--name` renames a single file/video or names a
+  playlist folder; `--output` pins a URL to an exact file path or folder.
+- **Playlist and album support** — entries are grouped into folders with
+  predictable names.
+- **Browser cookies** — auto-detected from installed browsers, with
+  explicit `NAME:PROFILE` support and `-n` to disable.
+- **TLS impersonation** — optional `curl_cffi` support for sites that reject
+  normal clients; automatically skipped when unavailable.
 - **Bandwidth controls** — overall and per-download limits with `K`/`M`/`G`
-  suffixes, mapped correctly to both engines.
-- **Safe recovery** — if aria2c fails, only incomplete files are retried
-  with yt-dlp; `--dedupe` removes duplicate files from a run.
-- **Embedded album images** — `--images` (opt-in) scans generic/html5 pages
-  and downloads photos into the album folder.
-- **Ordered passthrough** — any unknown option is forwarded to yt-dlp with
-  its value attached, in order.
-- **Friendly output** — banner, per-URL status, live progress bar, and an
-  end-of-run summary; `--quiet` silences it all.
-- **Self-contained defaults** — yt-dlp runs with `--ignore-config` plus
-  vdl's own settings, optionally extended by `~/.config/vdl/yt-dlp.conf`.
+  suffixes.
+- **Headers and proxies** — custom Referer, User-Agent, and proxy support.
+- **Embedded images** — opt-in scanning of generic album pages with
+  `--images`.
+- **Duplicate cleanup** — opt-in `--dedupe` keeps the oldest copy of
+  byte-identical files from the same run.
+- **Batch input** — read URLs from text files with `-i` or a bare `.txt`
+  argument, or paste a multi-line block of URLs directly.
+- **yt-dlp passthrough** — unknown options are forwarded in order with
+  their values, so advanced yt-dlp flags still work.
+- **Safe recovery** — a failed aria2c run retries only incomplete HTTP(S)
+  files through yt-dlp.
+- **Preview mode** — `--dry-run` shows the resolved plan without
+  downloading.
+- **Quiet mode** — `--quiet` suppresses banners, status lines, and progress.
 
-## Quick start
+## Requirements
+
+### Core
+
+| Component | Purpose | Package hint |
+|---|---|---|
+| Bash 4+ | runs vdl | base system |
+| yt-dlp | pages, playlists, streams | distro package, `pipx install yt-dlp`, or the standalone binary |
+
+### Recommended
+
+| Component | Purpose | Package hint |
+|---|---|---|
+| aria2c | fast direct downloads, torrents | `aria2` |
+| ffmpeg | MP3 extraction, merging, metadata | `ffmpeg` |
+| curl | embedded-image scanning | `curl` |
+| python-curl_cffi | optional TLS impersonation | `python3-curl_cffi` |
+| wl-clipboard / xclip / xsel | clipboard URL pickup | `wl-clipboard`, `xclip`, `xsel` |
+
+`vdl` checks available tools at run time:
+
+- Without `aria2c`, direct files are downloaded by yt-dlp instead.
+- Without `ffmpeg`, media downloads still work but audio extraction and
+  merging do not.
+- Without `curl_cffi`, TLS impersonation is skipped.
+- Without a clipboard tool, paste a URL or use a batch file.
+
+## Installation
+
+### 1. Install the toolchain
+
+Install yt-dlp and the optional tools from your distribution, for example:
+
+```sh
+sudo apt install yt-dlp aria2 ffmpeg curl xclip
+```
+
+yt-dlp moves quickly; if your distro's package is old, prefer `pipx install
+yt-dlp` or the standalone binary from the yt-dlp releases.
+
+Optional, for TLS impersonation:
+
+```sh
+pip install -U curl-cffi
+```
+
+### 2. Install vdl
 
 ```sh
 git clone https://github.com/RathiRayhan/vdl.git
 cd vdl
-./install.sh                     # installs to ~/.local/bin + completions
-
-vdl "https://example.com/video"
-vdl "https://example.com/file.iso" "https://example.com/video"   # mixed input
+./install.sh
 ```
 
-## Install
+The installer places `vdl` in `~/.local/bin`, its libraries in
+`~/.local/lib/vdl`, the man page in `~/.local/share/man/man1`, and
+completions for the shells it detects. For a system-wide install:
 
 ```sh
-./install.sh                     # ~/.local/bin + completions for detected shells
-./install.sh --shells bash,zsh,fish
-./install.sh --system            # /usr/local (run with sudo)
-./install.sh --no-completions
-./install.sh --uninstall
+sudo ./install.sh --system
 ```
 
-The installer places `vdl` in `<prefix>/bin`, its libraries in
-`<prefix>/lib/vdl`, the man page in `<prefix>/share/man/man1`, and shell
-completions for bash, zsh and fish. If `~/.local/bin` is not on your `PATH`,
-the installer prints the line to add; for zsh it prints the `fpath` line
-needed before `compinit`.
-
-## Usage
+Verify:
 
 ```sh
-vdl                                     # URL from the clipboard
-vdl "https://example.com/video"
-vdl "https://example.com/a" "https://example.com/b"   # multiple URLs
+vdl --version
+vdl --help
+man vdl
+```
+
+If the shell cannot find `vdl`, add `~/.local/bin` to your `PATH` (the
+installer prints the line to add) or open a new shell.
+
+## Updating
+
+```sh
+cd vdl
+git pull
+./install.sh
+```
+
+Keep yt-dlp, aria2, and ffmpeg current with your package manager or their own
+installers.
+
+## Quick start
+
+```sh
+# A video or page
+vdl "https://youtu.be/VIDEO_ID"
+
+# A direct file (ISO, ZIP, PDF, ...)
+vdl "https://example.com/file.iso"
+
+# Audio only, MP3 320k
+vdl -a "https://example.com/album"
+
+# A playlist at 720p
+vdl -q 720 "https://example.com/playlist"
+
+# A text file with one URL per line
+vdl links.txt
+
+# Several URLs, or a pasted block
+vdl "https://example.com/a" "https://example.com/b"
 vdl 'https://example.com/one
-https://example.com/two'                # paste a URL block, one per line
-vdl links.txt                           # every URL listed in links.txt
-vdl -q 720 links.txt
-vdl -a "https://example.com/album"      # MP3 320k
-vdl -n "https://example.com/file.iso"   # direct file, no cookies
-vdl --no-aria -F "https://example.com/video"
+https://example.com/two'
 
-vdl -b firefox:work "https://example.com"
-vdl --proxy http://127.0.0.1:8080 "https://example.com"
-vdl --dry-run "https://example.com/file.iso"          # preview routing
-vdl --download-dir ~/tmp "https://example.com/file.zip"
-vdl --quiet "https://example.com/video"               # no banner
-vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
-vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
-vdl --name my-rom "https://example.com/file.iso"      # custom filename
-vdl --output ~/Videos/movie.mp4 "https://example.com/video"  # exact path
-vdl --images "https://example.com/album/abc123"       # include album photos
-vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
-vdl --download-archive seen.txt -f "bv*+ba" \
-  "https://example.com/video"                         # passthrough values stay attached
-vdl 'magnet:?xt=urn:btih:abc123'                      # torrent magnet
+# A custom filename
+vdl --name my-archive "https://example.com/file.zip"
+
+# Preview routing and options without downloading
+vdl --dry-run "https://example.com/file.iso"
 ```
 
-All flags apply to every URL in a run. Unknown options are forwarded to
-yt-dlp with their values in order, so `-F`, `--playlist-start`,
-`--download-archive`, and friends work.
+By default, files are saved under:
+
+```text
+~/Downloads/vdl
+```
+
+## Advanced usage
 
 ### Routing
 
-| URL looks like | Engine |
-|----------------|--------|
-| archive/package/document (`zip`, `iso`, `pdf`, `deb`, ...) | aria2c, 16 connections |
-| magnet links, `.torrent` files | aria2c, 16 connections |
-| plain video file (`mp4`, `mkv`, `webm`, ...) | aria2c (yt-dlp in `-a` mode) |
-| HLS/DASH (`m3u8`, `mpd`) | yt-dlp native, 8 fragments |
-| pages, playlists, everything else | yt-dlp + aria2c (10 connections) |
+| URL type | Engine |
+|---|---|
+| `magnet:`, `.torrent` | aria2c |
+| `.zip`, `.iso`, `.pdf`, `.deb`, `.tar.gz`, images, ... | aria2c |
+| Plain `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.flv` | aria2c in video mode |
+| HLS/DASH (`.m3u8`, `.mpd`) | yt-dlp native |
+| Pages, playlists, streams, everything else | yt-dlp + aria2c where possible |
 
-The check uses the last path extension, so stacked suffixes like `.tar.gz`
-or `.zip.gz` classify as direct.
+Routing checks the last path extension, so `.tar.gz`, `.tgz`, and friends
+are all direct. Use `--no-aria` to force all direct files through yt-dlp.
 
-### Naming
+### Custom filenames
 
-- Single videos land flat in the save directory as `<title> [<id>].<ext>`.
-- Playlist and album entries get a folder named after the playlist/album.
-- `-a` writes MP3 files to `<save_dir>/audio` with the same layout.
-- `--name` renames a single download (extension appended when missing);
-  on a playlist URL it names the folder instead.
-- `--output` pins a single URL to an exact file path (extension in the last
-  component) or an exact folder (playlist items go directly inside).
+```sh
+vdl --name my-rom "https://example.com/file.iso"       # -> my-rom.iso
+vdl --name "episode 1" "https://example.com/video"     # -> episode 1.<ext>
+vdl --name custom.mp4 "https://example.com/video"      # -> custom.mp4
+```
 
-## Options
+For a playlist URL, the name becomes the folder:
 
-Run `vdl --help` for details, or `man vdl` after installing.
+```sh
+vdl --name my-album "https://example.com/playlist"
+```
 
-| Flag | Meaning |
-|------|---------|
-| `-b, --browser NAME` | Browser to take cookies from (`NAME:PROFILE` works); auto-detected by default |
-| `-n, --no-cookies` | Do not read browser cookies |
-| `-q, --quality HEIGHT` | Max video height (`720`, `1080`, `2k`, `4k`, `8k`) |
-| `-a, --audio` | Audio only, converted to MP3 320k |
-| `-i, --batch-file FILE` | Read URLs from a file (repeatable) |
-| `--no-aria` | Send direct files through yt-dlp |
-| `--no-impersonate` | Disable browser TLS impersonation |
-| `--download-dir DIR` | Override the save directory for this run |
-| `--dry-run` | Print the resolved plan without downloading |
-| `--dedupe` | Remove duplicate files downloaded in this run |
-| `--images` | Also download images embedded in album pages |
-| `--quiet` | Suppress banner, status and progress output |
-| `--aria-opts OPTS` | Extra options forwarded to aria2c |
-| `--max-speed RATE` | Overall download speed limit |
-| `--limit-speed RATE` | Per-download speed limit |
-| `--name NAME` | Custom filename (or playlist folder name) |
+`--name` requires exactly one input URL.
+
+### Exact destination
+
+```sh
+vdl --output ~/Videos/movie.mp4 "https://example.com/video"   # exact file
+vdl --output ~/Videos/season1 "https://example.com/playlist"  # exact folder
+```
+
+A path ending in an extension is the exact file; otherwise it is the exact
+folder (playlist items land directly inside it). Directories are created
+automatically. `--output` requires exactly one URL and cannot be combined
+with `--name`.
+
+### Audio
+
+```sh
+vdl -a "https://example.com/album"
+```
+
+Files go to `<save_dir>/audio` as MP3 320k with metadata and thumbnail
+embedding. ffmpeg is required.
+
+### Embedded images
+
+```sh
+vdl --images "https://example.com/album/123"
+```
+
+For generic or HTML5 album pages, vdl scans for `<img>` links and downloads
+them into the album folder, upgrading `/thumb/` previews to full-size
+images. Favicons, logos, avatars, video covers, and sidebar thumbnails are
+skipped. Known-site extractors such as YouTube are not scanned. This is
+opt-in because it adds page requests.
+
+### Duplicate cleanup
+
+```sh
+vdl --dedupe "https://example.com/album"
+```
+
+After the run, files created by that run are compared by size and SHA-256.
+Identical copies are removed, keeping the oldest. Files that existed before
+the run are never touched.
+
+### Torrents and magnets
+
+```sh
+vdl 'magnet:?xt=urn:btih:...'
+vdl 'https://example.com/file.torrent'
+```
+
+Torrents require aria2c. They are not retried through yt-dlp.
+
+### Speed limits
+
+```sh
+vdl --max-speed 2M "https://example.com/file.iso"
+vdl --limit-speed 500K "https://example.com/video"
+```
+
+Rates accept `K`, `M`, or `G` suffixes (1024-based); decimals need a suffix.
+`0` means unlimited. `--max-speed` maps to aria2c's overall limit;
+`--limit-speed` maps to aria2c's per-download limit. yt-dlp has one rate
+limit, so it receives the stricter non-zero value when both flags are set.
+
+### Batch files and pasted blocks
+
+```sh
+vdl links.txt
+vdl -i more-links.txt links.txt
+vdl 'https://example.com/one
+https://example.com/two'
+```
+
+Only lines beginning with `http://` or `https://` are read from files;
+blank lines and comments are ignored. In a pasted block, non-URL lines are
+ignored too.
+
+### Headers and proxies
+
+```sh
+vdl --referer "https://example.com/page" "https://example.com/file.iso"
+vdl --user-agent "Mozilla/5.0 ..." "https://example.com/file.iso"
+vdl --proxy "http://127.0.0.1:8080" "https://example.com/video"
+```
+
+### Cookies
+
+```sh
+vdl -b firefox "https://example.com/video"
+vdl -b firefox:work "https://example.com/video"   # specific profile
+vdl -n "https://example.com/file.iso"             # no cookies
+```
+
+The browser is auto-detected when `-b` is not given. Cookies apply to
+yt-dlp requests. aria2c direct downloads do not receive browser cookies; use
+`--no-aria` for a cookie-protected direct link.
+
+### TLS impersonation
+
+Some sites reject clients based on TLS fingerprints. vdl asks yt-dlp to
+impersonate a browser when `curl_cffi` is available; it silently skips
+impersonation when yt-dlp reports no usable target.
+
+```sh
+vdl --no-impersonate "https://example.com/video"
+VDL_IMPERSONATE=chrome vdl "https://example.com/video"
+VDL_IMPERSONATE=off vdl "https://example.com/video"
+```
+
+Impersonation applies to yt-dlp requests. aria2c media transfers do not
+impersonate; retry with `--no-aria` if a host rejects aria2c.
+
+### Preview and quiet mode
+
+```sh
+vdl --dry-run "https://example.com/file.iso"
+vdl --quiet "https://example.com/video"
+```
+
+`--dry-run` resolves routing, quality, cookies, and impersonation without
+downloading.
+
+### Interrupting and resuming
+
+Press `Ctrl+C`. Completed files stay in place. An in-flight yt-dlp download
+remains under `<save_dir>/.tmp`; aria2c keeps its partial file and `.aria2`
+control file in the save directory. Run the same command again to resume.
+
+## Common options
+
+Run `vdl --help` for the complete list. The most useful options:
+
+| Option | Meaning |
+|---|---|
+| `-q, --quality HEIGHT` | Maximum video height; `720`, `1080`, `2k`, `4k`, `8k` |
+| `-a, --audio` | Best audio, converted to MP3 320k |
+| `-n, --no-cookies` | Do not use cookies |
+| `-i, --batch-file FILE` | Read URLs from a file |
+| `-b, --browser NAME` | Browser cookie source or explicit profile |
+| `--download-dir DIR` | Override the save directory |
+| `--name NAME` | Custom filename, or playlist folder name |
 | `--output PATH` | Exact destination: file or folder for a single URL |
-| `--referer URL` | Send this Referer header |
-| `--user-agent UA` | Send this User-Agent header |
-| `--proxy URL` | Route downloads through this proxy |
-| `-h, --help` | Show help |
-| `-V, --version` | Show version |
+| `--no-aria` | Send direct files through yt-dlp |
+| `--no-impersonate` | Disable TLS impersonation |
+| `--images` | Download images embedded in album pages |
+| `--dedupe` | Remove duplicate files downloaded in this run |
+| `--max-speed RATE` | Overall speed limit |
+| `--limit-speed RATE` | Per-download speed limit |
+| `--referer URL` | Custom Referer header |
+| `--user-agent UA` | Custom User-Agent header |
+| `--proxy URL` | Proxy for downloads |
+| `--aria-opts OPTS` | Extra aria2c options |
+| `--dry-run` | Show the plan without downloading |
+| `--quiet` | Suppress vdl output |
+
+Any unknown option is forwarded to yt-dlp with its value in order. This
+makes advanced flags available without vdl reimplementing them:
+
+```sh
+vdl -F "https://example.com/video"
+vdl --playlist-start 3 "https://example.com/playlist"
+vdl --download-archive seen.txt "https://example.com/video"
+vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/video"
+```
 
 ## Configuration
 
+### Environment variables
+
 | Variable | Default | Meaning |
-|----------|---------|---------|
-| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl` | exact download directory |
+|---|---|---|
+| `VDL_SAVE_DIR` | `~/Downloads/vdl` | download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
-| `VDL_QUALITY` | `1080` | default max height |
-| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
-| `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
-| `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
-| `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp options, loaded if present |
-| `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
+| `VDL_QUALITY` | `1080` | default maximum height |
+| `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a target name |
+| `VDL_IMAGES` | unset | `1` or `yes` scans album pages for images |
+| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted leftovers |
+| `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
+| `VDL_CONFIG_DIR` | `~/.config/vdl` | vdl config directory |
 | `NO_COLOR` | unset | disable colored output |
 
-Precedence: **command line > environment > config file > defaults**.
+### vdl config file
 
-A small `KEY=VALUE` config file sets the same defaults:
+`~/.config/vdl/config` is a simple `KEY=VALUE` file. Comments start with
+`#`.
 
 ```sh
 # ~/.config/vdl/config
@@ -176,155 +433,138 @@ QUALITY=720
 BROWSER=firefox
 SAVE_DIR=~/Downloads/vdl
 IMPERSONATE=chrome
-TMP_KEEP_DAYS=7
+IMAGES=1
 ```
 
-`VDL_CONFIG` is an ordinary yt-dlp config file loaded *in addition* to vdl's
-built-in defaults.
+Command-line flags take precedence over exported environment variables,
+which take precedence over this file.
 
-## Behavior details
+### Extra yt-dlp options
 
-**Speed limits** accept a byte rate with an optional case-insensitive `K`,
-`M`, or `G` suffix (1024-based); decimals need a suffix (`1.5M`), `0` means
-unlimited. `--max-speed` maps to aria2c's overall limit, `--limit-speed` to
-its per-download limit; yt-dlp receives `--limit-rate` with the stricter
-non-zero value when both are set.
-
-**aria2c fallback:** if aria2c fails, vdl removes interrupted partials and
-retries only the incomplete HTTP(S) files with yt-dlp; completed files are
-untouched and magnet/torrent payloads are never retried.
-
-**Embedded images (`--images`):** opt-in scan of pages without a dedicated
-yt-dlp extractor. Only album-scoped `<img>` sources are taken (favicons,
-logos, avatars, video covers and sidebar thumbnails are skipped), `/thumb/`
-previews upgrade to the full-size image, and photos land in the album folder
-next to the videos.
-
-See **[docs/USAGE.md](docs/USAGE.md)** for the complete walk-through of every
-feature, **[docs/SPEC.md](docs/SPEC.md)** for the behavior contract, and
-**[CONTRIBUTING.md](CONTRIBUTING.md)** if you want to hack on it.
-
-## How it works
-
-`vdl` is a small Bash program — an orchestrator plus focused libraries —
-not a daemon. Each run goes through: parse arguments → resolve settings →
-collect URLs → classify and plan → build downloader commands → download →
-clean up and summarize. Because direct aria2c downloads are not driven by
-yt-dlp, they receive user-agent, referer, proxy and aria2c options, but not
-browser cookies or yt-dlp-only flags; use `--no-aria` for cookie-protected
-direct links.
-
-## YouTube HD formats (optional)
-
-YouTube sometimes exposes only format `18` (360p) and warns that it is
-"forcing SABR streaming". This is account- or client-specific, not a vdl
-setting. A PO token provider restores the full format list.
-
-1. Install the provider server (Deno 2 is required):
+`VDL_CONFIG` points to a regular yt-dlp config file:
 
 ```sh
-git clone --depth 1 --branch 2.0.2 \
-  https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git \
-  ~/.local/share/bgutil-ytdlp-pot-provider
-cd ~/.local/share/bgutil-ytdlp-pot-provider/server
-deno install --allow-scripts=npm:canvas --frozen
-```
-
-2. Install the yt-dlp plugin from the matching release ZIP (or
-   `python3 -m pip install -U bgutil-ytdlp-pot-provider`):
-
-```sh
-tmp=$(mktemp -d)
-curl -fL -o "$tmp/plugin.zip" \
-  https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/download/2.0.2/bgutil-ytdlp-pot-provider.zip
-mkdir -p ~/.config/yt-dlp/plugins/bgutil-ytdlp-pot-provider
-unzip -q "$tmp/plugin.zip" -d ~/.config/yt-dlp/plugins/bgutil-ytdlp-pot-provider
-rm -rf "$tmp"
-```
-
-3. Run the provider as a systemd user service (listens on `127.0.0.1:4416`).
-   Create `~/.config/systemd/user/bgutil-pot-provider.service`:
-
-```ini
-[Unit]
-Description=bgutil POT provider for yt-dlp
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=%h/.local/share/bgutil-ytdlp-pot-provider/server/node_modules
-ExecStart=/usr/bin/deno run --allow-env --allow-net --allow-ffi=. --allow-read=. ../src/main.ts
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=default.target
-```
-
-```sh
-systemctl --user daemon-reload
-systemctl --user enable --now bgutil-pot-provider.service
-```
-
-4. If the default web client still offers only 360p, select a client that
-   exposes the DASH/HLS formats in `~/.config/vdl/yt-dlp.conf`:
-
-```
+# ~/.config/vdl/yt-dlp.conf
 --extractor-args "youtube:player_client=web_safari"
 ```
 
-Check the result without downloading:
+This file is loaded *in addition* to vdl's built-in defaults. yt-dlp's
+global config is still ignored.
+
+## Troubleshooting
+
+### `vdl: command not found`
 
 ```sh
-vdl -F "https://youtu.be/..."
+hash -r
+command -v vdl
 ```
 
-Rows up to `1920x1080` mean the provider is working.
+`vdl` installs to `~/.local/bin`. If that directory is not on your `PATH`,
+add it (the installer prints the line) or install system-wide with
+`sudo ./install.sh --system`.
 
-## Layout
+### `Permission denied` when creating the save directory
 
+Use `--download-dir` for a writable location, or fix the permissions:
+
+```sh
+vdl --download-dir ~/Downloads "https://example.com/video"
 ```
-bin/vdl               the command (orchestrator)
-lib/vdl/              sourced libraries: ui, helpers, images, downloads,
+
+### `yt-dlp is required but was not found in PATH`
+
+Install yt-dlp (distro package, `pipx install yt-dlp`, or the standalone
+binary) and re-run.
+
+### Direct files fail with 403 or an anti-bot page
+
+Some CDNs reject plain download clients. Try:
+
+```sh
+vdl --no-aria "https://example.com/file.iso"
+vdl --user-agent "Mozilla/5.0 ..." "https://example.com/file.iso"
+```
+
+### YouTube only shows 360p
+
+Update yt-dlp first. If formats are still missing, the client or account may
+require a PO token provider — see the
+[yt-dlp PO Token Guide](https://github.com/yt-dlp/yt-dlp/wiki/PO-Token-Guide).
+
+### Merge or MP3 conversion fails
+
+Install ffmpeg:
+
+```sh
+sudo apt install ffmpeg
+```
+
+Large 4K merges are CPU-heavy; use a lower quality cap when possible:
+
+```sh
+vdl -q 1080 "https://example.com/video"
+```
+
+### `curl_cffi` will not install
+
+Impersonation is optional. vdl continues without it; only sites that reject
+non-impersonated clients are affected.
+
+### Interrupted downloads
+
+Nothing is lost. Completed files are in their final folders; re-run the same
+command to resume the rest.
+
+## Development
+
+The repository layout:
+
+```text
+bin/vdl               command entry point and orchestration
+lib/vdl/              ui, helpers, images, and download engines, plus
                       args, settings, collect, paths, classify, ytdlp, plan
-install.sh            installer / uninstaller
-completions/          bash, zsh and fish completions
+install.sh            installer/uninstaller
+completions/          bash, zsh, and fish completions
 man/vdl.1             man page
 docs/USAGE.md         full user guide
-docs/SPEC.md          behavior contract for maintainers
-test/smoke.sh         stub-based test suite (no network required)
-test/unit.sh          unit tests for pure helper functions
-Makefile              convenience targets (test, lint, install)
+docs/SPEC.md          behavior contract
+test/smoke.sh         stub-based CLI tests, no network required
+test/unit.sh          pure helper tests
 ```
+
+Run the checks:
+
+```sh
+make test     # smoke + unit tests
+make lint     # ShellCheck
+```
+
+The smoke suite stubs the downloaders and needs no network access. CI runs
+ShellCheck plus both suites on every push to `main`. Contributions are
+welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow and style
+rules.
 
 ## Uninstall
 
-```sh
-./install.sh --uninstall          # with the same --prefix/--system used to install
-```
-
-If you previously used `~/.config/fish/functions/vdl.fish`, remove it — fish
-functions shadow binaries on `PATH`. To remove the optional YouTube PO token
-provider:
+Use the same prefix you installed with:
 
 ```sh
-systemctl --user disable --now bgutil-pot-provider.service
-rm -f ~/.config/systemd/user/bgutil-pot-provider.service
-rm -rf ~/.local/share/bgutil-ytdlp-pot-provider
-rm -rf ~/.config/yt-dlp/plugins/bgutil-ytdlp-pot-provider
+cd vdl
+./install.sh --uninstall
 ```
 
-## Tests
+Remove configuration if you no longer need it:
 
 ```sh
-make test               # smoke + unit suites
-make lint               # shellcheck all scripts
+rm -rf ~/.config/vdl
 ```
-
-The smoke suite stubs `yt-dlp`, `aria2c`, `ffmpeg`, `curl`, and `wl-paste`,
-so it runs without network access or those tools installed. CI runs
-ShellCheck plus both suites on every push to `main`.
 
 ## License
 
-[MIT](LICENSE)
+MIT. See [LICENSE](LICENSE).
+
+---
+
+If you find a bug, include the output of `vdl --version`, `yt-dlp --version`,
+and the failing command in the issue.
