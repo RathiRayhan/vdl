@@ -201,7 +201,8 @@ previews upgrade to the full-size image, and photos land in the album folder
 next to the videos.
 
 See **[docs/USAGE.md](docs/USAGE.md)** for the complete walk-through of every
-feature, and **[docs/SPEC.md](docs/SPEC.md)** for the behavior contract.
+feature, **[docs/SPEC.md](docs/SPEC.md)** for the behavior contract, and
+**[CONTRIBUTING.md](CONTRIBUTING.md)** if you want to hack on it.
 
 ## How it works
 

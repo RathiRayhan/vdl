@@ -1,65 +1,79 @@
 # Contributing to vdl
 
-Thanks for taking the time to contribute!  This document covers the most
-common tasks and conventions.
+Thanks for helping improve vdl! It is a Bash project: a thin orchestrator
+(`bin/vdl`) plus focused libraries in `lib/vdl/`. This file explains the
+layout, the conventions, and how to make a change end to end.
 
-## Prerequisites
+## Before you start
 
-| Tool | Purpose | Install hint |
-|------|---------|-------------|
-| `bash` >= 4 | running vdl and the test suite | base system |
-| `shellcheck` | linting | `sudo apt install shellcheck` |
-| `bats` (optional) | running the test suite natively | `sudo apt install bats` |
+1. Read **[docs/SPEC.md](docs/SPEC.md)** — it is the behavior contract:
+   pipeline, routing table, exit codes, shared state, and feature-specific
+   rules.
+2. Check the issue tracker for existing discussions, or open an issue to
+   discuss non-trivial changes first.
 
-## Running tests
-
-The smoke tests use stub binaries for `yt-dlp`, `aria2c`, `ffmpeg`, and
-`wl-paste`, so no network access or real downloads are required.
+## Getting set up
 
 ```sh
-make test          # or: bash test/smoke.sh
+git clone https://github.com/RathiRayhan/vdl.git
+cd vdl
+bash test/smoke.sh   # needs nothing but bash + coreutils
+bash test/unit.sh
+make lint            # needs shellcheck on PATH
 ```
 
-To add a new test case, append it to `test/smoke.sh`.  Each case should:
+## Repository layout
 
-1. Be self-contained and reset `PATH` to the fake-bin directory.
-2. Call `run ...` with the desired arguments.
-3. Assert on `called`, `arg_is`, or `arg_has` helpers, or on exit codes.
-4. End with `ok` or `bad "..."`.
+| Path | Purpose |
+|------|---------|
+| `bin/vdl` | Orchestrator: sources the libraries and runs the pipeline |
+| `lib/vdl/*.sh` | One library per phase (see the SPEC file map) |
+| `install.sh` | Installer / uninstaller |
+| `completions/` | bash, zsh, fish completions |
+| `man/vdl.1` | Man page |
+| `docs/USAGE.md` | User guide |
+| `docs/SPEC.md` | Behavior contract |
+| `test/smoke.sh` | Stub-based end-to-end CLI tests |
+| `test/unit.sh` | Unit tests for pure helpers |
 
-## Linting
+## Making a change
+
+1. **Keep the split.** New logic belongs in the matching `lib/vdl/` file as
+   a function; `bin/vdl` only wires phases together. Pure helpers go into
+   `lib/vdl/helpers.sh` so they stay unit-testable.
+2. **Follow the contracts.** Update `docs/SPEC.md` whenever behavior, exit
+   codes, routing, or shared state change.
+3. **Add tests.**
+   - New or changed CLI behavior → a case in `test/smoke.sh` (uses stub
+     binaries; no network needed).
+   - New pure function → cases in `test/unit.sh`.
+4. **Update docs.** `--help` (`lib/vdl/helpers.sh`), the man page,
+   `docs/USAGE.md`, and the README when adding or changing options.
+   Completions live in `completions/`.
+5. **Run everything.**
 
 ```sh
-make lint          # or: shellcheck bin/vdl install.sh test/smoke.sh completions/*
+make test
+make lint
 ```
 
-All shell scripts in this repository should pass `shellcheck` with no warnings.
-The `# shellcheck shell=bash` directive at the top of each script tells
-shellcheck to target Bash 4+ semantics.
+## Style
 
-## Code style
+- Bash 4+, `set -u -o pipefail` (add `-e` in install.sh).
+- Quote expansions; use `[[ ... ]]`.
+- Library files start with `# shellcheck shell=bash` and a
+  `# shellcheck disable=` comment listing the warnings that only make sense
+  cross-file (`SC2154`, `SC2034`, `SC2329`).
+- Keep `bin/vdl` an orchestrator — no engine logic.
+- Messages go through `warn`/`err`/`note` (stderr) or the `ui_*` helpers
+  (stdout, silenced by `--quiet`).
 
-- Two-space indentation for continuation lines.
-- `printf` for output (never `echo -e`).
-- Use `set -u` (unbound variables) and `set -o pipefail` in all scripts.
-- Prefer `[[ ... ]]` over `[ ... ]`.
-- Keep `bin/vdl` self-contained; default yt-dlp flags live there, not in a
-  global config file.
+## Commit messages
 
-## Submitting changes
+Use short imperative subjects, e.g. `add --output for exact destinations`.
+One logical change per commit.
 
-1. Fork the repository.
-2. Create a feature branch.
-3. Make your changes.
-4. Ensure `make lint` and `make test` pass.
-5. Open a pull request with a clear description of the change.
+## CI
 
-## Reporting bugs
-
-If you find a bug, please open an issue with:
-
-- Your OS and distribution.
-- The `vdl --version` output.
-- The exact command you ran.
-- The relevant portion of the output (errors, banners).
-- Your `yt-dlp --version` and `aria2c --version` if relevant.
+Every push to `main` runs ShellCheck (the Ubuntu-packaged version) on all
+scripts plus the smoke and unit suites. Keep both green.
