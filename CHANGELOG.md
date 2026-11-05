@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-11-08
+## [2.2.0] - 2026-11-06
+
+### Changed
+
+- aria2c leftovers are swept automatically on exit: a `.aria2` control file
+  and its partial, both older than `VDL_TMP_KEEP_DAYS`, are removed.  When
+  aria2c fails and yt-dlp is unavailable, the partial is kept for a later
+  resume instead of being deleted.
+- Terminal output polish: an aligned label column with the colon at a fixed
+  position, `✓`/`✗` result glyphs, a bracket-free `Run n/m` counter,
+  capitalized engine/mode values, title-cased section headers, and a
+  `Failed` section in the summary.
+- CI apt steps use retries and explicit timeouts so a stalled mirror fails
+  fast instead of hanging.
+
+### Fixed
+
+- `--zip` no longer passes `--` to the archive command (real Info-ZIP
+  rejects it; the test shim had masked this).
+- The HTML image extractor prefers `data-src`/`src` over `data-rotate-src`
+  when both appear on the same tag (grid thumbnails were hiding real photo
+  URLs).
+
+## [2.1.0] - 2026-11-05
 
 ### Added
 
@@ -15,8 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--zip[=NAME.zip]`: archives a run's downloads into a single zip in the
   save directory (runs after `--dedupe`; requires the `zip` command).
 - Multi-line URL paste: pasted blocks are split into one URL per line.
-- Run-level `[Run] n/m` progress counter, a `Failed:` recap with per-URL
-  reasons in the summary, a scanning indicator during `--images`, and a
+- Run-level progress counter, a failure recap with per-URL reasons in the
+  summary, a scanning indicator during `--images`, and a
   terminal-width-adaptive progress bar.
 - Integration test suite (`test/integration.sh`) that drives the real
   yt-dlp/aria2c/ffmpeg against a local fixture, wired into CI.
@@ -30,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from the media queue early).
 - CI runs ShellCheck, smoke, unit, and integration suites.
 
-## [2.0.0] - 2026-11-06
+## [2.0.0] - 2026-11-04
 
 ### Added
 
@@ -38,8 +61,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to aria2c (16 connections, resume); pages, playlists and streams go to
   yt-dlp (aria2c for HTTP(S) media, native for HLS/DASH).
 - Redesigned terminal output: banner, per-phase section headers, per-URL
-  `[ok]`/`[fail]` status, end-of-run summary, and a live progress bar with
-  downloaded/total size, speed and ETA.
+  status, end-of-run summary, and a live progress bar with downloaded/total
+  size, speed and ETA.
 - Ordered passthrough: unknown options are forwarded to yt-dlp with their
   values attached, in their original order.
 - Speed limits: `--max-speed` (aria2c overall limit) and `--limit-speed`
@@ -53,23 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   photos from generic/html5 pages into the album folder; favicons, logos,
   avatars, video covers and sidebar thumbnails are skipped; photo-only
   albums work without a failing yt-dlp run.
-- Multi-line URL paste: a positional argument containing newlines is split
-  into one URL per line (blank and non-URL lines ignored).
-- Custom destinations: `--name` (filename or playlist folder name) and
-  `--output` (exact file path or folder for a single URL).
-- Zip archiving: `--zip[=NAME.zip]` packs a run's downloads into a single
-  archive in the save directory (runs after `--dedupe`; requires `zip`).
-- UI polish: a run-level `[Run] n/m` progress counter after each phase, a
-  `Failed:` recap in the summary with per-URL reasons, a scanning indicator
-  during `--images`, and a terminal-width-adaptive progress bar.
-- Stale aria2c partials (`.aria2` + partial, both older than
-  `VDL_TMP_KEEP_DAYS`) are now swept automatically on exit.  When aria2c
-  fails and yt-dlp is unavailable, the partial is kept for a later resume.
-- The banner and summary now use an aligned label column (no misaligned
-  colons) and the summary lists failures under a red `Failed` heading with
-  breathing room around the verdict.
-- `--images` downloads embedded photos **after** the videos now: the page
-  scan itself runs post-download, so media is always finished first.
+- Custom destinations: `--name` (filename or playlist folder name).
 - Configuration: `VDL_*` environment variables and a `KEY=VALUE` config
   file with CLI > environment > config > defaults precedence.
 - Browser cookies (auto-detected or `-b NAME:PROFILE`), TLS impersonation
@@ -79,14 +86,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   aliases.
 - Friendly Ctrl+C handling with a resume hint (exit 130).
 - Installer/uninstaller with bash/zsh/fish completions and a man page.
-- Network-free smoke test suite and unit tests for pure helpers; CI runs
-  ShellCheck plus both suites.
+- Network-free smoke test suite and unit tests for pure helpers.
 
 ### Changed
 
 - Code base restructured into a thin `bin/vdl` orchestrator and focused
-  libraries under `lib/vdl/` (ui, helpers, images, downloads, args,
-  settings, collect, paths, classify, ytdlp, plan).
+  libraries under `lib/vdl/`.
 - yt-dlp runs with `--ignore-config` and vdl's own defaults, optionally
   extended by `~/.config/vdl/yt-dlp.conf`.
 - aria2c always receives `-Z`, so multiple URLs download as separate files
