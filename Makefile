@@ -1,11 +1,16 @@
 # Makefile for vdl — portable smart downloader for Linux and Termux
 
-.PHONY: test lint install clean man
+.PHONY: test test-integration lint install clean man
 
 ## Run the smoke and unit test suites
 test:
 	bash test/smoke.sh
 	bash test/unit.sh
+
+## Run the integration suite against the real yt-dlp/aria2c/ffmpeg
+## (local HTTP fixture, no internet; needs python3, yt-dlp, aria2c, ffmpeg)
+test-integration:
+	bash test/integration.sh
 
 ## Lint all shell scripts with shellcheck
 lint:

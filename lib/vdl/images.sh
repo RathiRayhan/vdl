@@ -216,11 +216,16 @@ scrape_images() {
                 img_refs+=("$u")
                 img_dirs+=("$img_dir")
                 note "Embedded image: $img"
-            done < <(sed -E 's/data-rotate-src="[^"]*"//g' "$page_file" \
-                | sed -E "s/data-rotate-src='[^']*'//g" \
-                | grep -oiE "<img[^>]*(src|data-src)=[\"'][^\"']+\.(jpe?g|png|webp|gif)(\?[^\"']*)?[\"']" \
-                | grep -oE "(src|data-src)=[\"'][^\"']+[\"']" \
-                | sed -E "s/^(src|data-src)=[\"']//; s/[\"']$//" | sed 's/&amp;/\&/g')
+            done < <(if have python3; then
+                    python3 "$vdl_lib/scrape.py" "$page_file"
+                else
+                    # fallback: regex extraction for systems without python3
+                    sed -E 's/data-rotate-src="[^"]*"//g' "$page_file" \
+                        | sed -E "s/data-rotate-src='[^']*'//g" \
+                        | grep -oiE "<img[^>]*(src|data-src)=[\"'][^\"']+\.(jpe?g|png|webp|gif)(\?[^\"']*)?[\"']" \
+                        | grep -oE "(src|data-src)=[\"'][^\"']+[\"']" \
+                        | sed -E "s/^(src|data-src)=[\"']//; s/[\"']$//" | sed 's/&amp;/\&/g'
+                fi)
         fi
         [[ -n $page_file ]] && rm -f -- "$page_file"
     done
@@ -234,7 +239,7 @@ download_images() {
         return 0
     fi
 
-    ui_section "Embedded images"
+    ui_section "Embedded Images"
     for u in "${img_urls[@]}"; do
         ui_item "$(ui_name "$u")"
     done

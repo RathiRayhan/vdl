@@ -39,7 +39,7 @@ archive_run() {
     fi
 
     rm -f -- "$save_dir/$target"
-    if ( cd "$save_dir" && zip -q -r -- "$target" "${entries[@]#"$save_dir"/}" ); then
+    if ( cd "$save_dir" && zip -q -r "$target" "${entries[@]#"$save_dir"/}" ); then
         zip_created=$target
         note "Archived ${#entries[@]} file(s) to ${target}"
     else
@@ -105,7 +105,7 @@ download_directs() {
     fi
 
     aria_attempted=1
-    ui_section "Direct downloads via aria2c"
+    ui_section "Direct Downloads via aria2c"
     for u in "${direct[@]}"; do
         ui_item "$(ui_name "$u")"
     done
@@ -168,8 +168,16 @@ download_directs() {
                 # Remove the incomplete file and its control file before
                 # retrying.  yt-dlp with --no-overwrites would otherwise
                 # mistake the aria2c partial for a completed download.
-                rm -f -- "${dest}.aria2" "$dest"
-                direct_pending+=("$u")
+                # When yt-dlp is unavailable, keep the partial so a later
+                # run can resume it with aria2c.
+                if have yt-dlp; then
+                    rm -f -- "${dest}.aria2" "$dest"
+                    direct_pending+=("$u")
+                else
+                    direct_fail=$((direct_fail + 1))
+                    failed_items+=("$u|aria2c failed; partial kept for resume")
+                    ui_result 1 "$(ui_name "$u")"
+                fi
             elif [[ ! -f $dest ]]; then
                 direct_pending+=("$u")
             else
@@ -197,7 +205,7 @@ download_pending_directs() {
         return 0
     fi
 
-    ui_section "Direct downloads via yt-dlp"
+    ui_section "Direct Downloads via yt-dlp"
     if ! have yt-dlp; then
         err "yt-dlp is required to retry the failed direct download(s)"
         rc=1
@@ -247,7 +255,7 @@ download_media() {
         return 0
     fi
 
-    ui_section "Media / page downloads via yt-dlp"
+    ui_section "Media / Page Downloads via yt-dlp"
     for u in "${media[@]}"; do
         ui_item "$u"
     done

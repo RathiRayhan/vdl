@@ -23,6 +23,7 @@ contract.
 | `ffmpeg` | `-a` audio extraction, merging | `ffmpeg` |
 | `python-curl_cffi` | browser impersonation (optional, auto-detected) | `python-curl-cffi` |
 | `curl` | embedded-image scanning (`--images`, optional) | `curl` |
+| `python3` | HTML parser for `--images` (optional; regex fallback) | `python` |
 | `zip` | `--zip` archiving (optional) | `zip` |
 | `wl-clipboard`, `xclip`, or `xsel` | clipboard URL pickup (optional) | `wl-clipboard`, `xclip`, `xsel` |
 
@@ -100,7 +101,7 @@ install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 | `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl`; Termux: `~/storage/downloads/vdl` | exact download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max video height |
-| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers this long |
+| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers (temp files, stale aria2c partials) this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
 | `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
 | `VDL_COOKIES` | unset | Netscape cookies.txt file passed to yt-dlp |
@@ -397,14 +398,15 @@ vdl --images "https://example.com/album/abc123"
 
 Pages without a dedicated yt-dlp extractor (the `generic` and `html5`
 extractors) are scanned for `<img>` sources (`.jpg`, `.jpeg`, `.png`,
-`.webp`, `.gif`, both quote styles, `?v=...` cache-busters). The scan is
-scoped to the album via the playlist's media URLs: same-directory images are
-kept, video covers and sidebar thumbnails are skipped, and `/thumb/`
-previews upgrade to the full-size image. Favicons, logos, avatars, and UI
-icons are excluded. Photos download with aria2c (browser user-agent + the
-album page as referer) into the album folder next to the videos — and the
-page is only **scanned after the videos have finished**, so media always
-comes first. A page with
+`.webp`, `.gif`, both quote styles, `?v=...` cache-busters). Python 3 is used
+for HTML parsing when available (multi-line tags and entities work); a regex
+fallback remains for systems without python3. The scan is scoped to the
+album via the playlist's media URLs: same-directory images are kept, video
+covers and sidebar thumbnails are skipped, and `/thumb/` previews upgrade to
+the full-size image. Favicons, logos, avatars, and UI icons are excluded.
+Photos download with aria2c (browser user-agent + the album page as referer)
+into the album folder next to the videos — and the page is only **scanned
+after the videos have finished**, so media always comes first. A page with
 images but no video formats is treated as an image-only album. Known-site
 extractors (YouTube, ...) are not scanned, and `--dry-run` never touches the
 network. Everyday uses: photo galleries, manga chapters, product photos,
@@ -445,24 +447,32 @@ the files in place.
 Press Ctrl+C any time. Items that finished are already in their final
 folders; only the in-flight one stays in the temp directory. vdl prints a
 hint and exits with status 130. Re-run the exact same command to resume —
-completed files are skipped and the interrupted one continues.
+completed files are skipped and the interrupted one continues. Resume is
+byte-exact for both engines: aria2c restarts with a `Range` request where
+it stopped, and yt-dlp prints `Resuming download at byte N`.
+
+Leftovers are swept automatically on every exit: files in `.tmp` and stale
+aria2c partials (the `.aria2` control file *and* its partial, both older
+than `VDL_TMP_KEEP_DAYS`, default 7) are removed. If aria2c fails while
+yt-dlp is unavailable, the partial is kept for a later resume instead of
+being deleted.
 
 ### Terminal output
 
 A normal run shows a banner (engine, mode, URL counts, save dir), section
-headers, per-URL status lines with `[ok]`/`[fail]`, and an end-of-run
-summary with per-engine results and elapsed time. After each phase a
-run-level progress line tracks the whole batch:
+headers, per-URL status lines with `✓`/`✗`, and an end-of-run summary with
+per-engine results and elapsed time. After each phase a run-level progress
+line tracks the whole batch:
 
 ```
-  [Run] 2/3 · 1 failed
+  Run  2/3 · 1 failed
 ```
 
 Failed downloads are recapped in the summary with their reason:
 
 ```
-Failed:
-  [fail] https://example.com/video — yt-dlp exit 1
+  Failed
+  ✗  https://example.com/video — yt-dlp exit 1
 ```
 
 yt-dlp downloads render as a live bar whose width adapts to the terminal:

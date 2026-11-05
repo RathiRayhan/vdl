@@ -36,10 +36,25 @@ setup_paths() {
     tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
     [[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
     cleanup_tmp() {
-        [[ -d $tmp_dir ]] || return 0
-        find "$tmp_dir" -mindepth 1 -type f -mtime +"$tmp_keep_days" -delete 2>/dev/null || true
-        find "$tmp_dir" -mindepth 1 -type d -empty -mtime +0 -delete 2>/dev/null || true
-        rmdir "$tmp_dir" 2>/dev/null || true
+        local keep=$tmp_keep_days
+        if [[ -d $tmp_dir ]]; then
+            find "$tmp_dir" -mindepth 1 -type f -mtime +"$keep" -delete 2>/dev/null || true
+            find "$tmp_dir" -mindepth 1 -type d -empty -mtime +0 -delete 2>/dev/null || true
+            rmdir "$tmp_dir" 2>/dev/null || true
+        fi
+
+        # aria2c leftovers: a control file and its partial, both older than
+        # the keep window, are a stale interrupted download.  In-progress
+        # downloads are safe because aria2c refreshes the control file's
+        # mtime while running.
+        local ctrl
+        while IFS= read -r -d '' ctrl; do
+            local part=${ctrl%.aria2}
+            if [[ ! -e $part ]] || find "$part" -type f -mtime +"$keep" -print -quit 2>/dev/null | grep -q .; then
+                rm -f -- "$ctrl" "$part"
+            fi
+        done < <(find "$save_dir" -type f -name '*.aria2' -mtime +"$keep" \
+            ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
     }
 
     # Android can suspend Termux when the screen turns off.  When the

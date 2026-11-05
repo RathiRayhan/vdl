@@ -54,7 +54,7 @@ Environment:
                       Termux: ~/storage/downloads/vdl when storage is set up)
   VDL_BROWSER         Default browser, overridden by -b
   VDL_QUALITY         Default max height, overridden by -q
-  VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (default: 7)
+  VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (temp files, aria2c partials)
   VDL_IMPERSONATE     auto | off | <target> (default: auto = chrome)
   VDL_IMAGES          1 | yes to always scan album pages for images
   VDL_COOKIES         Netscape cookies.txt file passed to yt-dlp

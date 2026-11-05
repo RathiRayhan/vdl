@@ -7,37 +7,37 @@
 
 build_header() {
     if (( ${#direct[@]} )) && (( ${#media[@]} )); then
-        engine="hybrid (aria2c + yt-dlp)"
+        engine="Hybrid (aria2c + yt-dlp)"
     elif (( ${#direct[@]} )); then
         if (( direct_via_ytdlp )); then
-            engine="yt-dlp direct (native, 1 connection)"
+            engine="Direct (yt-dlp, native)"
         else
-            engine="aria2c direct (16 connections)"
+            engine="Direct (aria2c, 16 connections)"
         fi
     elif (( ${#media[@]} )); then
         if (( have_aria && ! no_aria )); then
-            engine="yt-dlp + aria2c"
+            engine="Media (yt-dlp + aria2c)"
         else
-            engine="yt-dlp native"
+            engine="Media (yt-dlp, native)"
         fi
     elif (( ${#img_urls[@]} )); then
         if (( have_aria && ! no_aria )); then
-            engine="embedded images (aria2c)"
+            engine="Images (aria2c)"
         else
-            engine="embedded images (yt-dlp)"
+            engine="Images (yt-dlp)"
         fi
     else
-        engine="idle"
+        engine="Idle"
     fi
 
     if (( audio )); then
-        mode="audio only (MP3 320k)"
+        mode="Audio only (MP3 320k)"
     elif (( ${#direct[@]} )) && (( ${#media[@]} == 0 )); then
-        mode="direct file download"
+        mode="Direct file download"
     elif (( ${#media[@]} == 0 )) && (( ${#img_urls[@]} )); then
-        mode="embedded images"
+        mode="Embedded images"
     else
-        mode="video (max ${quality}p, MP4 preferred)"
+        mode="Video (max ${quality}p, MP4 preferred)"
     fi
 
     display_dir=$out_dir

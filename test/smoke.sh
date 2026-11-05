@@ -90,13 +90,12 @@ if [[ ${0##*/} == aria2c && ${FAKE_ARIA_DUP:-} == yes ]]; then
     done
 fi
 if [[ ${0##*/} == zip ]]; then
-    # vdl runs: zip -q -r -- TARGET files... — create the archive file.
-    prev=''
+    # vdl runs: zip -q -r TARGET files... — create the archive file.
     for a in "$@"; do
-        if [[ $prev == -- ]]; then
+        if [[ $a != -* ]]; then
             printf 'PK\003\004' > "$a"
+            break
         fi
-        prev=$a
     done
     exit 0
 fi
@@ -398,7 +397,7 @@ fi
 
 # --- UI output: status lines and summary ------------------------------------
 run -n 'https://example.com/file.iso'
-if grep -q -- '--- Summary ---' "$out" && grep -q '\[ok\]' "$out"; then
+if grep -q -- '--- Summary ---' "$out" && grep -q '✓' "$out"; then
     ok
 else
     bad "non-quiet runs should print per-URL status and a summary"
@@ -414,15 +413,15 @@ fi
 export FAKE_ARIA_FAIL=yes
 run -n 'magnet:?xt=urn:btih:abc' 'https://example.com/file.iso'
 unset FAKE_ARIA_FAIL
-if grep -q '\[fail\]' "$out" && grep -q '\[ok\]' "$out" \
-    && grep -q 'Failed:' "$out" && grep -q 'aria2c failed' "$out"; then
+if grep -q '✗' "$out" && grep -q '✓' "$out" \
+    && grep -q 'Failed' "$out" && grep -q 'aria2c failed' "$out"; then
     ok
 else
     bad "UI should mark failed downloads separately and recap them in the summary"
 fi
 
 run -n 'https://example.com/a.iso' 'https://example.com/b.iso'
-if grep -q '\[Run\] 2/2' "$out"; then
+if grep -q 'Run  2/2' "$out"; then
     ok
 else
     bad "a run-level progress line should appear after the phases"
@@ -751,6 +750,7 @@ if PATH="$fakebin:/usr/bin:/bin" bash "$root/install.sh" \
     --prefix "$prefix" --shells bash,fish >/dev/null 2>&1 \
     && [[ -x $prefix/bin/vdl ]] \
     && [[ -f "$prefix/share/man/man1/vdl.1" ]] \
+    && [[ -f "$prefix/lib/vdl/scrape.py" ]] \
     && [[ -f $home/.local/share/bash-completion/completions/vdl ]] \
     && [[ -f $home/.config/fish/completions/vdl.fish ]]; then
     ok
@@ -775,6 +775,7 @@ if TERMUX_VERSION=termux PREFIX=$termux_prefix \
     --termux --shells bash >/dev/null 2>&1 \
     && [[ -x $termux_prefix/bin/vdl ]] \
     && [[ -f "$termux_prefix/share/man/man1/vdl.1" ]] \
+    && [[ -f "$termux_prefix/lib/vdl/scrape.py" ]] \
     && [[ -f "$termux_prefix/share/bash-completion/completions/vdl" ]]; then
     ok
 else

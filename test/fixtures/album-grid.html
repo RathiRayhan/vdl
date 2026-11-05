@@ -1,0 +1,28 @@
+<!-- Fixture: album page with a lazy-loaded image grid.  Real photo URLs
+     live in data-src with cache-busters; grid thumbnails sit in
+     data-rotate-src (must be ignored) and src holds a data: URI
+     placeholder.  All URLs anonymized. -->
+<html>
+<head><title>Fixture Album One</title></head>
+<body>
+<div id="album">
+  <img alt="photo #one" width="250" height="250"
+       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+       data-src="https://cdn.example.com/uploads/2026/01/02/abc123def456/one.jpg?v=1793165468">
+  <img alt="photo #two" width="250" height="250"
+       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+       data-rotate-src="https://cdn.example.com/uploads/2026/01/02/abc123def456/thumbs/two.jpg"
+       data-src="https://cdn.example.com/uploads/2026/01/02/abc123def456/two.jpg?v=1793165470">
+  <img alt="photo #three" width="250" height="250"
+       src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+       data-src="https://cdn.example.com/uploads/2026/01/02/abc123def456/three.jpg">
+  <video src="https://v.example.com/uploads/2026/01/02/abc123def456/clip_720p.mp4"></video>
+  <img alt="video cover" width="250" height="250"
+       data-rotate-src="https://cdn.example.com/uploads/2026/01/02/abc123def456/thumbs/clip.jpg">
+</div>
+<div id="sidebar">
+  <img alt="other album" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+       data-rotate-src="https://cdn.example.com/uploads/2026/01/03/other111111/thumbs/side.jpg">
+</div>
+</body>
+</html>

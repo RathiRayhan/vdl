@@ -214,6 +214,10 @@ if [[ -d $script_dir/lib/vdl ]]; then
         install -m 0644 -- "$libfile" "$prefix/lib/vdl/"
         printf 'installed %s\n' "$prefix/lib/vdl/${libfile##*/}"
     done
+    if [[ -f $script_dir/lib/vdl/scrape.py ]]; then
+        install -m 0644 -- "$script_dir/lib/vdl/scrape.py" "$prefix/lib/vdl/"
+        printf 'installed %s\n' "$prefix/lib/vdl/scrape.py"
+    fi
 fi
 
 if (( install_completions )); then

@@ -187,6 +187,17 @@ https://example.com/two'
 Blank and non-URL lines in a pasted block are ignored, and flags apply to every
 URL in the block.
 
+## Resume and stale partials
+
+Interrupted aria2c downloads leave a partial file plus a `.aria2` control
+file. vdl keeps those for resume when yt-dlp is unavailable; leftovers older
+than `VDL_TMP_KEEP_DAYS` (default 7) are swept automatically on exit. Keep
+`VDL_TMP_KEEP_DAYS` high enough if downloads often run across several days.
+
+The `--images` HTML parser uses Python 3 when available; on Termux the
+`python` package provides it. A regex fallback keeps image scanning working
+without Python.
+
 ## Background downloads
 
 Android may suspend or kill Termux when the screen turns off. If the

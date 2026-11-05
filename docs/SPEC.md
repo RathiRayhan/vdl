@@ -14,13 +14,14 @@ editing, refactoring, or asking an AI to modify the project.
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
 | `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
-| `lib/vdl/settings.sh` | Browser/quality/speed resolution (`resolve_settings`) |
-| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, `--name`/`--output` validation (`collect_urls`) |
-| `lib/vdl/paths.sh` | Save dir, temp dir, traps, `--output` repointing (`setup_paths`) |
+| `lib/vdl/settings.sh` | Browser/cookie/quality/speed resolution (`resolve_settings`, `build_cookie_args`) |
+| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, root cookie staging, `--name`/`--output` validation (`collect_urls`) |
+| `lib/vdl/paths.sh` | Save dir, temp dir, traps, Termux wake lock, `--output` repointing (`setup_paths`) |
 | `lib/vdl/classify.sh` | Direct/media split, image scan, name resolution, tool checks (`classify_urls`) |
-| `lib/vdl/ytdlp.sh` | yt-dlp defaults and impersonation (`build_yt_common`) |
+| `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
-| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
+| `lib/vdl/scrape.py` | Python HTML image extractor for `--images` (bash fallback when python3 is absent) |
+| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, `scrape.py`, man page, completions; supports `--termux` |
 | `test/smoke.sh` | Stub-based CLI tests (no network) |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
@@ -96,8 +97,9 @@ The check uses the **last** path extension, so stacked suffixes such as
 - `scan_pages`, `scan_do`, `scan_title`, `failed_items`, `zip_created`,
   `zip_mode`, `zip_name`.
 
-Libraries may read and update these globals but must not introduce new
-persistent state that `bin/vdl` does not declare.
+Libraries may read and update these globals.  Phase-local state belongs to
+the library that owns it (for example, cookie state is built in
+`lib/vdl/settings.sh`).
 
 ## Backend mappings
 
@@ -191,8 +193,9 @@ stricter non-zero value when both flags are set.
 - The heavy scan runs **after the media downloads**: each queued page is
   fetched to a temp file and parsed only if it looks like HTML.
 - Candidates come from `<img src/data-src>` (both quote styles, `?v=...`
-  stripped).  Excluded by name: favicon, apple-touch, logo, `/icons/`,
-  `icon-`, avatar, `/thumbs/`.
+  stripped).  `lib/vdl/scrape.py` does the parsing when python3 is available;
+  the regex pipeline is the fallback.  Excluded by name: favicon,
+  apple-touch, logo, `/icons/`, `icon-`, avatar, `/thumbs/`.
 - Scoped to the album via the playlist's media URLs: same directory tree
   (host-insensitive, `/thumb/` normalized) is kept; thumbnails whose
   basename matches a media file (video covers) are skipped.
@@ -210,6 +213,18 @@ stricter non-zero value when both flags are set.
   the temp dir and `.aria2/.part/.ytdl/.temp` files.
 - Same byte size, then identical SHA-256, then delete all but the oldest
   copy.  Pre-existing files can never be deleted.
+
+## Cleanup contract
+
+- `.tmp` is swept on every exit: files older than `VDL_TMP_KEEP_DAYS`
+  (default 7) are deleted, empty directories older than 1 day are removed,
+  and the directory itself is removed when empty.
+- aria2c leftovers are swept with the same window: a `.aria2` control file
+  and its partial, **both** older than the keep window, are deleted.  Active
+  downloads are safe because aria2c refreshes the control file's mtime.
+- On an aria2c failure with yt-dlp available, the partial and control file
+  are removed before the retry.  When yt-dlp is unavailable the partial is
+  **kept** so a later run can resume it, and the failure is reported.
 
 ## Zip contract (`--zip[=NAME.zip]`)
 
@@ -232,5 +247,14 @@ stricter non-zero value when both flags are set.
 - `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
   `sanitize_title`, `url_filename`, `url_is_direct`, `is_termux`); any new
   pure helper needs cases here.
+- `test/integration.sh` — drives the REAL yt-dlp/aria2c/ffmpeg against a
+  local HTTP fixture (multi-direct, playlists, `--images` ordering,
+  image-only albums, fallback, `--name`/`--output`, `--zip`, pasted blocks,
+  and the python image extractor).  No internet access required.
+- `lib/vdl/scrape.py` — the HTML image extractor for `--images` (python3;
+  the bash regex pipeline remains as a fallback when python3 is absent).
+- `test/fixtures/` — anonymized real-world gallery HTML patterns; the
+  integration suite asserts the extractor's exact output for each, so a
+  parser change that breaks a supported site pattern fails CI.
 - CI runs ShellCheck (Ubuntu-packaged version) on `bin/vdl`, `install.sh`,
-  both test files, and every `lib/vdl/*.sh`, then both suites.
+  the test files, and every `lib/vdl/*.sh`, then all three suites.

@@ -70,7 +70,9 @@ Termux:API app for a wake lock.
 - **Smart routing** — aria2c for files and torrents, yt-dlp for pages,
   playlists, and streams; one invocation can use both.
 - **Resumable transfers** — interrupted direct files continue from where they
-  stopped; yt-dlp keeps its own partial state under `<save_dir>/.tmp`.
+  stopped; yt-dlp keeps its own partial state under `<save_dir>/.tmp`.  If
+  yt-dlp is unavailable, aria2c partials are kept for a later resume and stale
+  leftovers are swept after `VDL_TMP_KEEP_DAYS`.
 - **Quality control** — default 1080p cap, with `720`, `2k`, `4k`, and `8k`
   aliases.
 - **Audio extraction** — `-a` downloads the best audio and converts it to MP3
@@ -91,7 +93,8 @@ Termux:API app for a wake lock.
   suffixes.
 - **Headers and proxies** — custom Referer, User-Agent, and proxy support.
 - **Embedded images** — opt-in scanning of generic album pages with
-  `--images`.
+  `--images`; a Python HTML parser handles multi-line tags, entities, and
+  real-world gallery markup, with a regex fallback when python3 is absent.
 - **Duplicate cleanup** — opt-in `--dedupe` keeps the oldest copy of
   byte-identical files from the same run.
 - **Batch input** — read URLs from text files with `-i` or a bare `.txt`
@@ -102,8 +105,8 @@ Termux:API app for a wake lock.
   files through yt-dlp.
 - **Termux aware** — shared-storage defaults, automatic wake lock, and a
   dedicated installer mode.
-- **Run progress and failure recap** — a `[Run] n/m` counter after each
-  phase and a `Failed:` summary with per-URL reasons.
+- **Run progress and failure recap** — a `Run n/m` counter after each phase,
+  `✓`/`✗` result glyphs, and a `Failed` summary with per-URL reasons.
 - **Preview mode** — `--dry-run` shows the resolved plan without downloading.
 - **Quiet mode** — `--quiet` suppresses banners, status lines, and progress.
 
@@ -130,6 +133,7 @@ Termux:API app for a wake lock.
 | aria2c | fast direct downloads, torrents | `aria2` |
 | ffmpeg | MP3 extraction, merging, metadata | `ffmpeg` |
 | curl | embedded-image scanning | `curl` |
+| python3 | HTML parser for `--images` (optional; regex fallback) | `python` |
 | zip | `--zip` archiving | `zip` |
 | Termux:API app | wake lock | `termux-api` + Termux:API app |
 | Python pip | optional `curl_cffi` install | `python-pip` |
@@ -756,14 +760,14 @@ downloading.
 After each phase, vdl prints a batch-level progress line:
 
 ```text
-  [Run] 2/3 · 1 failed
+  Run  2/3 · 1 failed
 ```
 
 Failed downloads are recapped in the summary with their reason:
 
 ```text
-Failed:
-  [fail] https://example.com/video — yt-dlp exit 1
+  Failed
+  ✗  https://example.com/video — yt-dlp exit 1
 ```
 
 The yt-dlp bar adapts to the terminal width; aria2c keeps its native
@@ -774,6 +778,8 @@ per-file progress line. `--quiet` suppresses all of vdl's own output.
 Press `Ctrl+C`. Completed files stay in place. An in-flight yt-dlp download
 remains under `<save_dir>/.tmp`; aria2c keeps its partial file and `.aria2`
 control file in the save directory. Run the same command again to resume.
+Aria2c leftovers older than `VDL_TMP_KEEP_DAYS` are swept on exit; if yt-dlp
+is unavailable, the partial is kept so a later aria2c run can resume it.
 
 ## Troubleshooting
 
@@ -916,7 +922,7 @@ The repository layout:
 ```text
 bin/vdl               command entry point and orchestration
 lib/vdl/              ui, helpers, args, settings, collect, paths,
-                      classify, ytdlp, plan, images, downloads
+                      classify, ytdlp, plan, images, downloads, scrape.py
 install.sh            installer/uninstaller with --termux support
 completions/          bash, zsh, and fish completions
 man/vdl.1             man page
@@ -925,18 +931,23 @@ docs/TERMUX.md        detailed Termux notes
 docs/SPEC.md          behavior contract
 test/smoke.sh         stub-based CLI tests, no network required
 test/unit.sh          pure helper tests
+test/integration.sh   real-tool integration suite, local fixture
+test/fixtures/        real-world gallery HTML fixtures for scrape.py
 ```
 
 Run the checks:
 
 ```sh
-make test     # smoke + unit tests
-make lint     # ShellCheck
+make test               # smoke + unit tests
+make lint               # ShellCheck
+make test-integration   # real yt-dlp/aria2c/ffmpeg, no internet needed
 ```
 
 The smoke suite stubs the downloaders and needs no network access. The unit
 suite covers URL classification, speed/quality normalization, filenames, and
-Termux detection.
+Termux detection. The integration suite covers real downloads, playlists,
+image ordering, fallback, naming/output, zip, pasted blocks, and the Python
+image extractor.
 
 Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for the
 workflow and ShellCheck requirements.
