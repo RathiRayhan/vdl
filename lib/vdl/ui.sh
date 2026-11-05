@@ -29,10 +29,11 @@ ui_section() {
     printf '\n%s--- %s ---%s\n' "$C_CYN" "$*" "$C_OFF"
 }
 
-# Aligned label/value row (fixed-width label column, no colons).
+# Aligned label/value row: fixed-width label column, colon at a fixed
+# position on every line.
 ui_row() {
     (( quiet )) && return 0
-    printf '  %s%-11s%s %s\n' "$C_GRN" "$1" "$C_OFF" "$2"
+    printf '  %s%-11s%s: %s\n' "$C_GRN" "$1" "$C_OFF" "$2"
 }
 
 # A URL/about-to-start line, e.g. "  • file.iso"
