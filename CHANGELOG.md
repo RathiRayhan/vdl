@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.2] - 2026-11-06
+
+### Changed
+
+- yt-dlp's lowercase log tags (`[download]`, `[info]`, `[generic]`, ...)
+  are now capitalized in vdl's output, matching the rest of the UI.
+
 ## [2.2.1] - 2026-11-06
 
 ### Fixed
