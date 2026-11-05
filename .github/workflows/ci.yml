@@ -48,7 +48,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2 ffmpeg zip
-          python3 -m pip install -U yt-dlp
+          python3 -m pip install -U --break-system-packages yt-dlp \
+            || python3 -m pip install -U yt-dlp
+          yt-dlp --version
+          aria2c --version | head -1
+          ffmpeg -version | head -1
 
       - name: Integration tests
         run: |

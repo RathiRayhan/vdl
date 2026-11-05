@@ -16,13 +16,15 @@ pass=0
 fail=0
 
 ok()  { pass=$((pass + 1)); }
-bad() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$*" >&2; }
+bad() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$*" >&2; tail -n 30 "$LOG" 2>/dev/null | sed 's/^/    /' >&2; }
 
 check() { # label condition...
     local label=$1
     shift
     if "$@"; then ok; else bad "$label"; fi
 }
+
+LOG="$tmp/last.log"
 
 # --- fixture ----------------------------------------------------------------
 mkdir -p "$tmp/srv/srv" "$tmp/home" "$tmp/fakebin"
@@ -51,8 +53,9 @@ EOF
 chmod +x "$tmp/fakebin/aria2c"
 
 # zip shim when the real zip command is missing
+mkdir -p "$tmp/zipbin"
 if ! command -v zip >/dev/null 2>&1; then
-    cat > "$tmp/fakebin/zip" <<'EOF'
+    cat > "$tmp/zipbin/zip" <<'EOF'
 #!/usr/bin/env bash
 seen=0; declare -a rest=()
 for a in "$@"; do
@@ -60,7 +63,7 @@ for a in "$@"; do
 done
 python3 -m zipfile -c "${rest[0]}" "${rest[@]:1}"
 EOF
-    chmod +x "$tmp/fakebin/zip"
+    chmod +x "$tmp/zipbin/zip"
 fi
 
 # random free port so parallel/leftover servers cannot collide
@@ -74,7 +77,7 @@ B="http://127.0.0.1:$port"
 REAL="/usr/bin:/bin"
 DL="$tmp/home/Downloads/vdl"
 
-run_vdl() { PATH="$REAL" bash "$root/bin/vdl" "$@" >/dev/null 2>&1; }
+run_vdl() { PATH="$REAL" bash "$root/bin/vdl" "$@" >"$LOG" 2>&1; }
 
 # --- 1. multiple direct files ----------------------------------------------
 run_vdl -n --no-impersonate "$B/a.iso" "$B/b.iso"; rc=$?
@@ -90,11 +93,15 @@ check "item 2 in folder" test -f "$DL/My List/2 - My List (2) [list-2].mp4"
 
 # --- 3. --images: video finishes before the page scan -----------------------
 rm -rf "$DL"
-PATH="$REAL" bash "$root/bin/vdl" -n --no-impersonate --images "$B/alb.html" >"$tmp/images.log" 2>&1; rc=$?
+PATH="$REAL" bash "$root/bin/vdl" -n --no-impersonate --images "$B/alb.html" >"$LOG" 2>&1; rc=$?
 check "images rc" test $rc -eq 0
-vline=$(grep -an '\[ok\].*alb.html' "$tmp/images.log" | head -1 | cut -d: -f1)
-sline=$(grep -an 'Scanning page' "$tmp/images.log" | head -1 | cut -d: -f1)
-check "video before scan" test -n "$vline" -a -n "$sline" -a "$vline" -lt "$sline"
+vline=$(grep -an '\[ok\].*alb.html' "$LOG" | head -1 | cut -d: -f1)
+sline=$(grep -an "Scanning page" "$LOG" | head -1 | cut -d: -f1)
+if [[ -n $vline && -n $sline ]] && [ "$vline" -lt "$sline" ]; then
+    ok
+else
+    bad "video before scan (v=$vline s=$sline)"
+fi
 check "photo in album folder" test -f "$DL/My Album/pic.webp"
 
 # --- 4. image-only page -----------------------------------------------------
@@ -105,8 +112,8 @@ check "image-only photo" test -f "$DL/Photos/pic.webp"
 
 # --- 5. aria2c failure falls back to real yt-dlp -----------------------------
 rm -rf "$DL"
-PATH="$tmp/fakebin:$REAL" bash "$root/bin/vdl" -n --no-impersonate "$B/big.iso" >/dev/null 2>&1; rc=$?
-size=$(stat -c %s "$DL/big.iso" 2>/dev/null || printf '0')
+PATH="$tmp/fakebin:$REAL" bash "$root/bin/vdl" -n --no-impersonate "$B/big.iso" >"$LOG" 2>&1; rc=$?
+size=$(stat -c %s "$DL/big.iso" 2>/dev/null || printf "0")
 check "fallback rc" test $rc -eq 0
 check "fallback size" test "$size" -eq 262144
 
@@ -121,7 +128,7 @@ check "output file" test -f "$tmp/exact/movie.iso"
 
 # --- 7. --zip ---------------------------------------------------------------
 rm -rf "$DL"
-PATH="$tmp/fakebin:$REAL" bash "$root/bin/vdl" -n --zip=run.zip "$B/a.iso" >/dev/null 2>&1; rc=$?
+PATH="$tmp/zipbin:$REAL" bash "$root/bin/vdl" -n --zip=run.zip "$B/a.iso" >"$LOG" 2>&1; rc=$?
 check "zip rc"    test $rc -eq 0
 check "zip file"  test -f "$DL/run.zip"
 check "zip content" sh -c "python3 -m zipfile -l '$DL/run.zip' 2>/dev/null | grep -q a.iso"
@@ -131,7 +138,7 @@ rm -rf "$DL"
 paste_block="http://127.0.0.1:$port/a.iso
 # noise
 http://127.0.0.1:$port/b.iso"
-PATH="$REAL" bash "$root/bin/vdl" -n "$paste_block" >/dev/null 2>&1; rc=$?
+PATH="$REAL" bash "$root/bin/vdl" -n "$paste_block" >"$LOG" 2>&1; rc=$?
 check "paste rc" test $rc -eq 0
 check "paste a"  test -f "$DL/a.iso"
 check "paste b"  test -f "$DL/b.iso"
