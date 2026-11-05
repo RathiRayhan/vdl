@@ -137,6 +137,15 @@ exit 1
 STUB
 chmod +x "$fakebin/su"
 
+# Fake Termux:API wake-lock commands for the Termux lifecycle test.
+for cmd in termux-wake-lock termux-wake-unlock; do
+    cat > "$fakebin/$cmd" <<STUB
+#!/usr/bin/env bash
+printf '${cmd}\n' >> "\$FAKE_LOG"
+STUB
+    chmod +x "$fakebin/$cmd"
+done
+
 pass=0
 fail=0
 
@@ -371,6 +380,15 @@ if run -n --dry-run 'https://example.com/file.iso' 'https://example.com/watch?v=
     ok
 else
     bad "--dry-run should print a plan and not invoke downloaders"
+fi
+
+# --- Termux wake lock ------------------------------------------------------
+if TERMUX_VERSION=termux run -n 'https://example.com/file.iso' \
+    && grep -q '^termux-wake-lock$' "$log" \
+    && grep -q '^termux-wake-unlock$' "$log"; then
+    ok
+else
+    bad "Termux runs should acquire and release the wake lock"
 fi
 
 # --- Termux save directory -------------------------------------------------
