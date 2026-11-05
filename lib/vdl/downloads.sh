@@ -235,6 +235,16 @@ download_media() {
     [[ -n $referer ]] && yt_media+=( --referer "$referer" )
     [[ -n $proxy ]] && yt_media+=( --proxy "$proxy" )
 
+    # The item template: with --output FOLDER the playlist title prefix is
+    # dropped so everything lands directly in that folder.
+    if (( ${out_folder_strip:-0} )); then
+        media_out_template='%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    elif (( audio )); then
+        media_out_template='%(playlist_title)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    else
+        media_out_template='%(playlist_title,album)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+    fi
+
     if (( audio )); then
         yt_media+=(
             -f 'bestaudio/best'
@@ -243,7 +253,7 @@ download_media() {
             -P "home:$out_dir"
             -P "temp:$tmp_dir"
             --output-na-placeholder '.'
-            -o '%(playlist_title)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+            -o "$media_out_template"
         )
     else
         yt_media+=(
@@ -254,7 +264,7 @@ download_media() {
             -P "home:$save_dir"
             -P "temp:$tmp_dir"
             --output-na-placeholder '.'
-            -o '%(playlist_title,album)s/%(playlist_index&{} - |)s%(title).80B [%(id)s].%(ext)s'
+            -o "$media_out_template"
         )
     fi
     # A custom name overrides the default template (the last -o wins).

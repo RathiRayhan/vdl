@@ -397,6 +397,20 @@ vdl --name my-album "https://example.com/playlist"      # -> my-album/1 - … .m
 file/video or one playlist; embedded images from `--images` keep their own
 names).
 
+### Exact destination
+
+`--output` pins a single URL to an exact path:
+
+```sh
+vdl --output ~/Videos/movie.mp4 "https://example.com/video"  # exact file
+vdl --output ~/Videos/season1 "https://example.com/playlist" # exact folder
+```
+
+A path whose last component has an extension is the exact file; otherwise it
+is the exact folder (playlist items go directly inside it, with no
+title-named subfolder). Directories are created automatically. `--output`
+requires exactly one URL and cannot be combined with `--name`.
+
 ### Interrupting a download
 
 Press Ctrl+C any time. Items that finished downloading are already moved to

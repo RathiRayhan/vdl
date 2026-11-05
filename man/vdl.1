@@ -81,6 +81,11 @@ Per-download speed limit.
 Save a single download under this filename (the extension is appended when
 NAME has none).  For a playlist URL, NAME becomes the folder name instead.
 .TP
+.B \-\-output \fIPATH\fR
+Exact destination for a single URL.  A PATH whose last component has an
+extension is the exact file; otherwise PATH is the exact folder (playlist
+items go directly inside it).  Cannot be combined with \-\-name.
+.TP
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
 .TP

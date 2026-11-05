@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.mp3`); a name with an extension is used verbatim.  For playlist URLs,
   NAME becomes the folder name.  Requires exactly one URL; embedded images
   keep their own names.
+- `--output PATH` flag: pins a single URL to an exact destination — a file
+  path when the last component has an extension, otherwise an exact folder
+  (playlist items land directly inside it).  Cannot be combined with
+  `--name`.
 - `docs/USAGE.md`: a user guide covering installation, setup, every feature
   with examples, and uninstallation.
 - Repository restructured for maintainability: `bin/vdl` is now a thin

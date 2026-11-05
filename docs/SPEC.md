@@ -133,6 +133,18 @@ stricter non-zero value when both flags are set.
 - Embedded images keep their own names; on image-only pages `--name` is
   ignored with a note.
 
+## Exact destination (`--output PATH`)
+
+- Single URL only; combining with `--name` is a usage error (exit 2).
+- The save directory is repointed before classification and the image
+  scanner, so every engine writes into PATH's directory.
+- A PATH whose last component has an extension is the exact file: direct
+  downloads use aria2c `-o`, media downloads append `-o` (last one wins).
+  Playlist URLs are rejected (exit 2, detected via `%(playlist_count)s`).
+- A PATH without an extension is the exact folder: the media item template
+  drops the `%(playlist_title)s` prefix, so playlist items land directly
+  inside PATH; audio mode also writes into PATH instead of `audio/`.
+
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new

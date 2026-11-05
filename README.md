@@ -115,6 +115,7 @@ vdl --quiet "https://example.com/video"               # no banner
 vdl --max-speed 2M "https://example.com/file.iso"     # overall limit
 vdl --limit-speed 500K "https://example.com/file.iso" # per-download limit
 vdl --name my-rom "https://example.com/file.iso"      # custom filename
+vdl --output ~/Videos/movie.mp4 "https://example.com/video"   # exact path
 vdl --images "https://example.com/album/abc123"      # include album photos
 vdl --aria-opts "--check-interval=30" "https://example.com/file.iso"
 vdl --download-archive seen.txt -f "bv*+ba" \

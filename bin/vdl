@@ -61,6 +61,7 @@ aria_opts=''
 max_speed=''
 limit_speed=''
 custom_name=''
+output_arg=''
 
 declare -a batch_files=()
 declare -a raw_args=()
@@ -240,6 +241,16 @@ while (( $# > 0 )); do
             custom_name=${arg#*=}
             prev_unknown_flag=0
             ;;
+        --output)
+            (( $# > 0 )) || need_value "$arg"
+            output_arg=$1
+            shift
+            prev_unknown_flag=0
+            ;;
+        --output=*)
+            output_arg=${arg#*=}
+            prev_unknown_flag=0
+            ;;
         --)
             while (( $# > 0 )); do
                 raw_args+=("$1")
@@ -412,6 +423,12 @@ if [[ -n $custom_name ]]; then
     named_url=${urls[0]}
 fi
 
+# --output is the exact destination for a single URL.
+if [[ -n $output_arg ]]; then
+    (( ${#urls[@]} == 1 )) || { err "--output works with a single URL"; exit 2; }
+    [[ -z $custom_name ]] || { err "--output cannot be combined with --name"; exit 2; }
+fi
+
 # ---------------------------------------------------------------------------
 # 4. Paths and dependencies
 # ---------------------------------------------------------------------------
@@ -461,6 +478,32 @@ fi
 have_aria=0
 have aria2c && have_aria=1
 
+# --output: exact destination for a single URL.  A path whose last component
+# has an extension is the exact file; otherwise it is the exact folder.  The
+# save directory is repointed here, before classification and the image
+# scanner, so every engine uses it.
+custom_direct=''
+custom_media=''
+out_folder_strip=0
+if [[ -n $output_arg ]]; then
+    out_last=${output_arg%/}
+    out_last=${out_last##*/}
+    ext_present=0
+    case $out_last in
+        *.*) [[ ${out_last##*.} =~ ^[a-zA-Z0-9]{1,8}$ ]] && ext_present=1 ;;
+    esac
+    if (( ext_present )); then
+        save_dir=$(dirname "$output_arg")
+        custom_direct=$out_last
+        custom_media=$out_last
+    else
+        save_dir=$output_arg
+        out_folder_strip=1
+    fi
+    tmp_dir=$save_dir/.tmp
+    out_dir=$save_dir
+fi
+
 # ---------------------------------------------------------------------------
 # 5. Split URLs into direct files and media/page URLs, then scan for images
 # ---------------------------------------------------------------------------
@@ -500,9 +543,9 @@ fi
 # extension is appended literally when the user's name lacks one; for a
 # media download the yt-dlp template %(ext)s is used so the real container
 # extension wins.  In audio mode the extension is always mp3.
-custom_direct=''
-custom_media=''
 if [[ -n $custom_name ]]; then
+    custom_direct=''
+    custom_media=''
     ext=''
     uext=${named_url##*/}
     uext=${uext%%\?*}
@@ -544,6 +587,19 @@ if [[ -n $custom_name ]]; then
         custom_name=''
         custom_direct=''
         custom_media=''
+    fi
+fi
+
+# A playlist cannot be saved as a single file, so --output with an
+# extension must reject playlist URLs (one light probe tells them apart).
+if [[ -n $output_arg ]] && [[ -n ${custom_direct:-} ]] && (( ${#media[@]} )) \
+    && (( ! dry_run )) && have yt-dlp; then
+    pl_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
+        --print '%(playlist_count)s' -- "${media[0]}" 2>/dev/null)
+    pl_out=${pl_out##*$'\n'}
+    if [[ $pl_out =~ ^[0-9]+$ ]]; then
+        err "--output with a file extension cannot be used for a playlist URL"
+        exit 2
     fi
 fi
 
