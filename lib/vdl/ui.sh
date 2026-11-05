@@ -99,7 +99,9 @@ yt_bar() {
         function colorize(seg) {
             if (seg ~ /^\[[A-Za-z0-9_.-]+\]/) {
                 match(seg, /^\[[A-Za-z0-9_.-]+\]/)
-                return grn substr(seg, 1, RLENGTH) off substr(seg, RLENGTH + 1)
+                tag = substr(seg, 1, RLENGTH)
+                cap = "[" toupper(substr(tag, 2, 1)) substr(tag, 3)
+                return grn cap off substr(seg, RLENGTH + 1)
             }
             if (seg ~ /^WARNING:/) {
                 sub(/^WARNING:/, "", seg)

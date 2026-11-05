@@ -111,5 +111,20 @@ expect_eq "progress prints after completed work" "$(ui_run_progress)" '  Run  1/
 media_fail=1
 expect_eq "progress appends failure count" "$(ui_run_progress)" '  Run  2/1 · 1 failed'
 
+# --- yt_bar capitalizes yt-dlp's lowercase log tags --------------------------
+expect_eq "yt_bar capitalizes download tag" \
+    "$(printf '[download] Downloading item 3 of 30\n' | yt_bar)" \
+    '[Download] Downloading item 3 of 30'
+expect_eq "yt_bar capitalizes extractor tag" \
+    "$(printf '[generic] JCaQ4iFwwlzFD: Downloading webpage\n' | yt_bar)" \
+    '[Generic] JCaQ4iFwwlzFD: Downloading webpage'
+expect_eq "yt_bar keeps capitalized tags" \
+    "$(printf '[Metadata] Adding metadata to file\n' | yt_bar)" \
+    '[Metadata] Adding metadata to file'
+expect_eq "yt_bar capitalizes every line" \
+    "$(printf '[download] x\n[info] y\n' | yt_bar)" \
+    '[Download] x
+[Info] y'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1
