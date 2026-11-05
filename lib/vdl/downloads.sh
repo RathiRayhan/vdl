@@ -168,8 +168,16 @@ download_directs() {
                 # Remove the incomplete file and its control file before
                 # retrying.  yt-dlp with --no-overwrites would otherwise
                 # mistake the aria2c partial for a completed download.
-                rm -f -- "${dest}.aria2" "$dest"
-                direct_pending+=("$u")
+                # When yt-dlp is unavailable, keep the partial so a later
+                # run can resume it with aria2c.
+                if have yt-dlp; then
+                    rm -f -- "${dest}.aria2" "$dest"
+                    direct_pending+=("$u")
+                else
+                    direct_fail=$((direct_fail + 1))
+                    failed_items+=("$u|aria2c failed; partial kept for resume")
+                    ui_result 1 "$(ui_name "$u")"
+                fi
             elif [[ ! -f $dest ]]; then
                 direct_pending+=("$u")
             else

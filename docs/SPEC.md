@@ -182,6 +182,18 @@ stricter non-zero value when both flags are set.
 - Same byte size, then identical SHA-256, then delete all but the oldest
   copy.  Pre-existing files can never be deleted.
 
+## Cleanup contract
+
+- `.tmp` is swept on every exit: files older than `VDL_TMP_KEEP_DAYS`
+  (default 7) are deleted, empty directories older than 1 day are removed,
+  and the directory itself is removed when empty.
+- aria2c leftovers are swept with the same window: a `.aria2` control file
+  and its partial, **both** older than the keep window, are deleted.  Active
+  downloads are safe because aria2c refreshes the control file's mtime.
+- On an aria2c failure with yt-dlp available, the partial and control file
+  are removed before the retry.  When yt-dlp is unavailable the partial is
+  **kept** so a later run can resume it, and the failure is reported.
+
 ## Zip contract (`--zip[=NAME.zip]`)
 
 - Runs after dedupe, using the same run window (files with `mtime >=` run

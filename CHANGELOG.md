@@ -62,6 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UI polish: a run-level `[Run] n/m` progress counter after each phase, a
   `Failed:` recap in the summary with per-URL reasons, a scanning indicator
   during `--images`, and a terminal-width-adaptive progress bar.
+- Stale aria2c partials (`.aria2` + partial, both older than
+  `VDL_TMP_KEEP_DAYS`) are now swept automatically on exit.  When aria2c
+  fails and yt-dlp is unavailable, the partial is kept for a later resume.
 - `--images` downloads embedded photos **after** the videos now: the page
   scan itself runs post-download, so media is always finished first.
 - Configuration: `VDL_*` environment variables and a `KEY=VALUE` config

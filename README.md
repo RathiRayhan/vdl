@@ -435,7 +435,7 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/vide
 | `VDL_QUALITY` | `1080` | default maximum height |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a target name |
 | `VDL_IMAGES` | unset | `1` or `yes` scans album pages for images |
-| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted leftovers |
+| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted leftovers (temp files and stale aria2c partials) |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | vdl config directory |
 | `NO_COLOR` | unset | disable colored output |

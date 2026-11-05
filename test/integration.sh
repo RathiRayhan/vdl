@@ -192,5 +192,17 @@ EOF
 python3 "$root/lib/vdl/scrape.py" "$root/test/fixtures/album-thumbs.html" | sort > "$tmp/thumbs.actual"
 check "thumbs fixture output" diff -u "$tmp/thumbs.expected" "$tmp/thumbs.actual"
 
+# --- 11. stale aria2c leftovers are swept on exit ----------------------------
+mkdir -p "$DL"
+printf 'partial' > "$DL/stale.iso"
+: > "$DL/stale.iso.aria2"
+printf 'partial' > "$DL/fresh.iso"
+: > "$DL/fresh.iso.aria2"
+touch -d '8 days ago' "$DL/stale.iso" "$DL/stale.iso.aria2"
+run_vdl -n --no-impersonate "$B/a.iso"; rc=$?
+check "sweep rc" test $rc -eq 0
+check "stale aria2 swept" test ! -e "$DL/stale.iso" -a ! -e "$DL/stale.iso.aria2"
+check "fresh aria2 kept" test -f "$DL/fresh.iso" -a -f "$DL/fresh.iso.aria2"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1
