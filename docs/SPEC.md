@@ -44,17 +44,18 @@ the repo and from any install prefix.
    none were given; duplicates removed, order preserved.
 4. **Set up paths** — save dir, temp dir (`<save_dir>/.tmp`), EXIT/INT
    traps, and the `--output` repointing.
-5. **Classify** — `url_is_direct` implements the routing rule; media URLs
-   may be scanned for images (`--images`); `--name`/`--output` are resolved;
-   yt-dlp/ffmpeg requirements are checked.
+5. **Classify** — `url_is_direct` implements the routing rule; `--name`/
+   `--output` are resolved; yt-dlp/ffmpeg requirements are checked.  With
+   `--images`, a light preflight probes each media page's extractor so
+   image-only pages can be dropped from the media queue early.
 6. **Build yt-dlp defaults** — `yt_common` (ignore-config, retries,
    progress template, rate limit) and impersonation probing.
 7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
 8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
    name without `-Z`) with yt-dlp fallback for failed files; media via a
    single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
-   embedded images last, via aria2c per source page (referer + browser UA)
-   with yt-dlp fallback, so videos are always downloaded first.
+   **then**, with `--images`, the pages are scanned for images and the
+   photos are downloaded, so videos always finish first.
 9. **Finish** — temp cleanup, `--dedupe`, summary, exit.
 
 ## Routing rule (`url_is_direct`)
@@ -143,9 +144,13 @@ stricter non-zero value when both flags are set.
 
 ## Embedded-image contract (`--images` / `VDL_IMAGES=1`)
 
-- Only pages whose yt-dlp extractor is `generic` or `html5` are scanned;
-  known-site extractors are skipped.  `--dry-run` never touches the network.
-- The page is fetched to a temp file and parsed only if it looks like HTML.
+- A light preflight probes each media page's extractor before downloading:
+  pages whose yt-dlp extractor is not `generic`/`html5` are never scanned,
+  and pages with no video formats (image-only albums) are removed from the
+  media queue so yt-dlp does not fail on them.  `--dry-run` never touches
+  the network.
+- The heavy scan runs **after the media downloads**: each queued page is
+  fetched to a temp file and parsed only if it looks like HTML.
 - Candidates come from `<img src/data-src>` (both quote styles, `?v=...`
   stripped).  Excluded by name: favicon, apple-touch, logo, `/icons/`,
   `icon-`, avatar, `/thumbs/`.
@@ -157,8 +162,8 @@ stricter non-zero value when both flags are set.
 - Images save into the sanitized album/playlist folder (`sanitize_title`,
   matching yt-dlp's folder sanitization), or the save dir when no title
   exists.
-- A page with images but no video formats is an image-only album: the page
-  is removed from the media queue so yt-dlp does not fail on it.
+- The banner and `--dry-run` plan are printed before the scan, so they show
+  only the input URLs; scanned images appear in the run and the summary.
 
 ## Dedupe contract (`--dedupe`)
 

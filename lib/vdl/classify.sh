@@ -24,7 +24,7 @@ classify_urls() {
     img_refs=()
     img_dirs=()
 
-    scrape_images
+    preflight_images
 
     if (( ${#direct[@]} )); then
         if (( ! have_aria || no_aria )); then

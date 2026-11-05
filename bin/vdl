@@ -57,6 +57,9 @@ declare -a direct_pending=()
 declare -a img_urls=()
 declare -a img_refs=()
 declare -a img_dirs=()
+declare -a scan_pages=()
+declare -A scan_do=()
+declare -A scan_title=()
 declare -a yt_common=()
 
 classify_urls
@@ -74,13 +77,14 @@ zip_created=''
 declare -a failed_items=()
 dedupe_mark=$(date +%s)
 
-# 8. Download: direct files, media/pages, then embedded images.
+# 8. Download: direct files, media/pages, then scan and download images.
 download_directs
 ui_run_progress
 download_pending_directs
 ui_run_progress
 download_media
 ui_run_progress
+scrape_images
 download_images
 ui_run_progress
 

@@ -39,8 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - UI polish: a run-level `[Run] n/m` progress counter after each phase, a
   `Failed:` recap in the summary with per-URL reasons, a scanning indicator
   during `--images`, and a terminal-width-adaptive progress bar.
-- `--images` downloads embedded photos **after** the videos now, so media
-  is available first.
+- `--images` downloads embedded photos **after** the videos now: the page
+  scan itself runs post-download, so media is always finished first.
 - Configuration: `VDL_*` environment variables and a `KEY=VALUE` config
   file with CLI > environment > config > defaults precedence.
 - Browser cookies (auto-detected or `-b NAME:PROFILE`), TLS impersonation

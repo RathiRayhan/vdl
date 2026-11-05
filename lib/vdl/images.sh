@@ -16,10 +16,19 @@ img_ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) C
 # image-only album and removed from the media list.
 #
 # Note: img_urls/img_refs/img_dirs are declared by bin/vdl and filled here.
-scrape_images() {
+# Light preflight for --images: probe each media page's extractor once, so
+# image-only pages can be removed from the media queue before yt-dlp runs,
+# and known-site extractors can be skipped later.  The heavy page scan and
+# the image downloads happen after the media downloads (see scrape_images).
+#
+# Note: scan_pages/scan_do/scan_title are declared by bin/vdl and filled here.
+preflight_images() {
     img_urls=()
     img_refs=()
     img_dirs=()
+    scan_pages=()
+    scan_do=()
+    scan_title=()
     images_on=0
     (( images )) && images_on=1
     [[ ${VDL_IMAGES:-} == 1 || ${VDL_IMAGES:-} == yes ]] && images_on=1
@@ -40,8 +49,7 @@ scrape_images() {
             *) media_kept+=("$u"); continue ;;
         esac
 
-        note "Scanning page for embedded images: $u"
-
+        scan_pages+=("$u")
         probe_out=$(yt-dlp --ignore-config --quiet --simulate -I 1 \
             --print '%(extractor)s|%(playlist_title)s' -- "$u" 2>&1)
         probe_rc=$?
@@ -51,6 +59,7 @@ scrape_images() {
         album_title=${album_title#*|}
         [[ $probe_rc == 0 ]] || album_title=''
         [[ $album_title == NA ]] && album_title=''
+        scan_title[u]=$album_title
         images_only=0
         case $probe_out in
             *"Unsupported URL"*|*"No video formats found"*)
@@ -59,9 +68,41 @@ scrape_images() {
         esac
         if [[ $probe_rc == 0 && -n $extractor ]] \
             && [[ $extractor != generic && $extractor != generic:* && $extractor != html5 ]]; then
+            # known-site extractor: never scan
             media_kept+=("$u")
             continue
         fi
+        scan_do[u]=1
+        if (( images_only )); then
+            # yt-dlp has nothing to download for this page; scan it for
+            # images after the media phase instead of failing on it.
+            note "No video formats on page — images will be scanned after the downloads"
+            if [[ -n $custom_name ]]; then
+                note "--name ignored: this page only yields embedded images"
+                custom_name=''
+                custom_direct=''
+                custom_media=''
+            fi
+        else
+            media_kept+=("$u")
+        fi
+    done
+    media=("${media_kept[@]}")
+}
+
+# The heavy part of --images, run after the media downloads: fetch each
+# queued page, extract the album's images, and queue them for
+# download_images.  Pages skipped by preflight_images are left alone, and
+# --dry-run never touches the network.
+scrape_images() {
+    if (( ${#scan_pages[@]} == 0 )); then
+        return 0
+    fi
+
+    for u in "${scan_pages[@]}"; do
+        [[ -n ${scan_do[u]:-} ]] || continue
+
+        note "Scanning page for embedded images: $u"
 
         # Collect the playlist's media URLs.  Their directory prefixes
         # scope the page's images to this album, and their basenames
@@ -91,15 +132,11 @@ scrape_images() {
             curl "${curl_args[@]}" -o "$page_file" -- "$u" || true
         fi
 
-        found=0
-
-        # Only treat the response as a page when it looks like HTML.
-        # Binary responses (e.g. a misclassified file) are skipped so
-        # they are never slurped into a shell variable.
         if [[ -n $page_file ]] && grep -aqiE '<(img|html|body|head|a[ >]|video|title)' "$page_file"; then
             # Fall back to the page <title> when yt-dlp has no playlist
             # title, then sanitize it so the image folder matches the one
             # yt-dlp creates for the videos.
+            album_title=${scan_title[u]}
             if [[ -z $album_title ]]; then
                 album_title=$(grep -oiE '<title[^>]*>[^<]+' "$page_file" \
                     | head -1 | sed -E 's/^<title[^>]*>//')
@@ -176,7 +213,6 @@ scrape_images() {
                 img_urls+=("$img")
                 img_refs+=("$u")
                 img_dirs+=("$img_dir")
-                found=1
                 note "Embedded image: $img"
             done < <(sed -E 's/data-rotate-src="[^"]*"//g' "$page_file" \
                 | sed -E "s/data-rotate-src='[^']*'//g" \
@@ -185,16 +221,7 @@ scrape_images() {
                 | sed -E "s/^(src|data-src)=[\"']//; s/[\"']$//" | sed 's/&amp;/\&/g')
         fi
         [[ -n $page_file ]] && rm -f -- "$page_file"
-
-        if (( images_only && found )); then
-            # yt-dlp has nothing to download for this page; the images
-            # are the whole album.
-            note "No video formats on page — ${found} embedded image(s) queued"
-        else
-            media_kept+=("$u")
-        fi
     done
-    media=("${media_kept[@]}")
 }
 
 # Download the images queued by scrape_images, grouped by their source page
