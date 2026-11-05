@@ -586,6 +586,17 @@ else
     bad "--name with multiple URLs should exit 2"
 fi
 
+# --- Termux custom filename ------------------------------------------------
+termux_name_dl=$tmp/termux-name-dl
+if TERMUX_VERSION=termux VDL_SAVE_DIR=$termux_name_dl \
+    run -n --name termux-file 'https://example.com/file.iso' \
+    && arg_is -o && arg_is termux-file.iso \
+    && arg_is -d && arg_is "$termux_name_dl"; then
+    ok
+else
+    bad "--name should work on Termux direct downloads"
+fi
+
 export FAKE_PLAYLIST=yes
 run -n --no-impersonate --name myalb 'https://example.com/watch?v=abc'
 unset FAKE_PLAYLIST
