@@ -89,12 +89,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo 'FAIL lines:'
-            grep -a '^FAIL' /tmp/int-out.log | head -20 || true
+            echo 'integration step output:'
+            tail -n 80 /tmp/int-out.log 2>/dev/null || true
             echo
             echo 'last vdl log:'
             LOG=$(ls -td /tmp/tmp.* 2>/dev/null | head -1)/last.log
-            tail -n 40 "$LOG" 2>/dev/null || true
+            tail -n 30 "$LOG" 2>/dev/null || true
           } > /tmp/int-report.txt
           python3 - "${{ github.sha }}" <<'PY'
           import json, os, sys, urllib.request
