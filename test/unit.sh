@@ -153,5 +153,15 @@ expect_eq "imp: bare target" \
     "$(imp_resolve_target 'Chrome      -    curl_cffi' chrome)" 'Chrome'
 expect_fail_fn "imp: empty list"      imp_resolve_target '' chrome
 
+# --- browser UA helpers ------------------------------------------------------
+expect_eq "headless UA becomes chrome" \
+    "$(chrome_ua_from_headless 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36')" \
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
+expect_fail_fn "headless UA rejects garbage" chrome_ua_from_headless 'not a ua'
+expect_eq "firefox ua from version" \
+    "$(firefox_ua_for_version 'Mozilla Firefox 133.0')" \
+    'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0'
+expect_fail_fn "firefox ua rejects garbage" firefox_ua_for_version 'not a browser'
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

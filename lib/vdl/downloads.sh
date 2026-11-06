@@ -140,14 +140,22 @@ download_directs() {
     fi
 
     aria_rc=0
-    aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
+    aria_log=$(mktemp) || aria_log=''
+    if [[ -n $aria_log ]]; then
+        aria2c "${aria_args[@]}" "${direct[@]}" 2>&1 | tee "$aria_log" || aria_rc=$?
+    else
+        aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
+    fi
     if (( aria_rc == 0 )); then
         direct_ok=${#direct[@]}
         for u in "${direct[@]}"; do
             ui_result 0 "$(ui_name "$u")"
         done
+        rm -f -- "$aria_log"
         return 0
     fi
+    [[ -n $aria_log ]] && grep -qiE 'cloudflare|403[^0-9]*forbidden' "$aria_log" && cf_challenge=1
+    rm -f -- "$aria_log"
 
     direct_pending=()
     for u in "${direct[@]}"; do
@@ -317,16 +325,23 @@ download_media() {
     [[ -n ${custom_media:-} ]] && yt_media+=( -o "$custom_media" )
 
     media_rc=0
-    yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
+    media_log=$(mktemp) || media_log=''
+    if [[ -n $media_log ]]; then
+        yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | tee "$media_log" | yt_bar || media_rc=$?
+    else
+        yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
+    fi
     (( media_rc )) && rc=$media_rc
     if (( media_rc == 0 )); then
         media_ok=${#media[@]}
     else
         media_fail=${#media[@]}
+        [[ -n $media_log ]] && grep -qiE 'cloudflare|403[^0-9]*forbidden' "$media_log" && cf_challenge=1
         for u in "${media[@]}"; do
             failed_items+=("$u|yt-dlp exit $media_rc")
         done
     fi
+    rm -f -- "$media_log"
     for u in "${media[@]}"; do
         ui_result $media_rc "$u"
     done

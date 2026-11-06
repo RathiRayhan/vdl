@@ -62,6 +62,7 @@ print_plan() {
         done
         printf '%sDirect:  %d  Media: %d\n' "" "${#direct[@]}" "${#media[@]}"
         printf '%sImpersonate: %s\n' "" "${impersonate:-none}"
+        [[ -n $ua ]] && printf '%sUser-Agent: %s\n' "" "$ua"
         printf '\n%s(dry-run — nothing downloaded)%s\n' "$C_DIM" "$C_OFF"
         exit 0
     fi

@@ -166,6 +166,93 @@ termux_root_firefox_profile() {
     printf '%s\n' "$cache"
 }
 
+# Map a resolved browser name to its executable candidates (first hit wins).
+browser_binary() {
+    case $1 in
+        vivaldi)  printf 'vivaldi\n' ;;
+        firefox)  printf 'firefox\n' ;;
+        brave)    printf 'brave-browser\nbrave\n' ;;
+        chromium) printf 'chromium\nchromium-browser\n' ;;
+        chrome)   printf 'google-chrome\ngoogle-chrome-stable\n' ;;
+        edge)     printf 'microsoft-edge\n' ;;
+        opera)    printf 'opera\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+# Headless mode brands the UA with HeadlessChrome; the real window (the one
+# that solved Cloudflare's challenge) sends the plain Chrome token.
+chrome_ua_from_headless() {
+    local ua=${1:-}
+    [[ $ua == Mozilla/* ]] || return 1
+    printf '%s\n' "${ua/HeadlessChrome/Chrome}"
+}
+
+# A Firefox User-Agent built from "Mozilla Firefox N.N" version output.
+firefox_ua_for_version() {
+    local ver=${1:-}
+    ver=${ver##* }
+    [[ $ver =~ ^[0-9]+\.[0-9]+ ]] || return 1
+    printf 'Mozilla/5.0 (X11; Linux x86_64; rv:%s) Gecko/20100101 Firefox/%s\n' "$ver" "$ver"
+}
+
+# Probe a Chromium-family binary for the User-Agent it really sends.  A
+# headless instance in a throwaway profile answers its DevTools /json/version
+# endpoint, whose User-Agent field matches the real browser apart from the
+# HeadlessChrome token, which is rewritten back to Chrome.  Prints the UA or
+# nothing.
+chromium_ua() {
+    local bin=${1:-} profile port pid ua i
+    [[ -n $bin ]] || return 1
+    have curl || return 1
+    profile=$(mktemp -d) || return 1
+    port=$(( 20000 + RANDOM % 20000 ))
+    setsid "$bin" --headless=new --disable-gpu --no-first-run \
+        --no-default-browser-check --user-data-dir="$profile" \
+        --remote-debugging-port=$port about:blank >/dev/null 2>&1 &
+    pid=$!
+    ua=''
+    for (( i = 0; i < 40; i++ )); do
+        ua=$(curl -s --max-time 1 "http://127.0.0.1:$port/json/version" 2>/dev/null \
+            | sed -n 's/.*"User-Agent"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p') || ua=''
+        [[ -n $ua ]] && break
+        sleep 0.25
+    done
+    kill -- -"$pid" 2>/dev/null
+    wait "$pid" 2>/dev/null
+    rm -rf -- "$profile"
+    chrome_ua_from_headless "$ua"
+}
+
+# When cookies come from a real browser, mirror that browser's User-Agent.
+# Cloudflare's clearance cookie is bound to the UA that solved the challenge,
+# so a mismatched UA would make the cookies useless.
+match_browser_ua() {
+    [[ -n $ua ]] && return 0
+    [[ $browser == none ]] && return 0
+
+    # Android app browsers are not exposed as Termux executables, and a
+    # desktop browser's UA would not match Android cookies.  Termux users can
+    # pass an explicit --user-agent when UA-bound cookies are required.
+    if is_termux; then
+        return 0
+    fi
+
+    local name=${browser%%:*} bin
+    name=${name,,}
+    while IFS= read -r bin; do
+        have "$bin" || continue
+        note "Probing $name for its User-Agent…"
+        case $name in
+            firefox)
+                ua=$(firefox_ua_for_version "$(timeout 8 "$bin" --version 2>/dev/null)") ;;
+            *)
+                ua=$(chromium_ua "$bin") ;;
+        esac
+        [[ -n $ua ]] && break
+    done < <(browser_binary "$name")
+}
+
 read_clipboard() {
     local out='' line=''
 

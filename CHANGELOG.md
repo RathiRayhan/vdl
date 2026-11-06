@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.4] - 2026-11-06
+
+### Added
+
+- When cookies come from a browser, vdl mirrors that browser's exact
+  User-Agent (probed headlessly from the installed binary), so Cloudflare
+  clearance cookies stay valid.  An explicit `--user-agent` still wins.
+  On Termux this probing is skipped because Android app browsers are not
+  exposed as Termux executables; use an explicit `--user-agent` when needed.
+- A run that fails with a 403 now suggests opening the page in the browser
+  once to solve a possible Cloudflare challenge, then rerunning to reuse
+  the session cookies.
+
 ## [2.2.3] - 2026-11-06
 
 ### Fixed
