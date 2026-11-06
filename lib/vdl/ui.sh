@@ -154,7 +154,7 @@ yt_bar() {
 print_banner() {
     (( quiet )) && return 0
     printf '\n%s===============================================%s\n' "$C_CYN" "$C_OFF"
-    printf '  %svdl %s%s  —  Smart Downloader\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
+    printf '  %svdl %s%s  —  Versatile Downloader for Linux\n' "$C_CYN" "$VDL_VERSION" "$C_OFF"
     printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
     ui_row 'Engine' "$engine"
     ui_row 'Mode' "$mode"

@@ -8,7 +8,7 @@
 
 usage() {
     cat <<'EOF'
-vdl - smart downloader for Linux (yt-dlp + aria2c)
+vdl - versatile downloader for Linux (yt-dlp + aria2c)
 
 Usage:
   vdl [options] <url> | <links.txt>

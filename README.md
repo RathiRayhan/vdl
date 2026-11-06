@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-3DDC84)](https://www.linux.org/)
 
-A fast, resumable command-line downloader for Linux. `vdl` routes every URL
-to the right engine automatically:
+**vdl — Versatile Downloader for Linux.** A fast, resumable command-line
+downloader: routes every URL to the right engine automatically:
 
 - **Direct files** — archives, disk images, documents, packages, plain video
   files, magnet links, and `.torrent` files — go through **aria2c** with

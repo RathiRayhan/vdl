@@ -1,9 +1,10 @@
 # vdl User Guide
 
-`vdl` is a smart downloader for Linux. It routes every URL to the right
-engine — aria2c for direct files, yt-dlp for pages, playlists and streams —
-and layers resumable multi-connection downloads, browser cookies, speed
-limits, custom names, and embedded album images on top.
+`vdl` — Versatile Downloader for Linux — is a smart downloader. It routes
+every URL to the right engine — aria2c for direct files, yt-dlp for pages,
+playlists and streams — and layers resumable multi-connection downloads,
+browser cookies, speed limits, custom names, and embedded album images on
+top.
 
 This guide covers installation, setup, every feature with examples, and
 uninstallation. See the [README](../README.md) for the project overview,
