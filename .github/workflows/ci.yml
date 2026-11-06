@@ -2,13 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, termux]
   pull_request:
-    branches: [main]
+    branches: [main, termux]
+
+# A newer push supersedes any still-running workflow for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -16,8 +22,12 @@ jobs:
 
       - name: Install shellcheck
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 install -y -qq --no-install-recommends shellcheck
+          # Preinstalled on ubuntu-latest; fall back to apt only if missing.
+          if ! command -v shellcheck >/dev/null; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=60 install -y -qq --no-install-recommends shellcheck
+          fi
+          shellcheck --version | head -1
 
       - name: ShellCheck
         run: |
@@ -39,6 +49,7 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -46,12 +57,20 @@ jobs:
 
       - name: Install real tools
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 install -y -qq --no-install-recommends aria2 ffmpeg zip yt-dlp
+          # yt-dlp comes from PyPI (fast, no apt mirror involved); aria2c
+          # and zip ship with the runner image; ffmpeg is apt-installed
+          # only when the image does not provide it.
+          export PATH="$HOME/.local/bin:$PATH"
+          python3 -m pip install --user --quiet --no-input yt-dlp
+          if ! command -v aria2c >/dev/null || ! command -v zip >/dev/null || ! command -v ffmpeg >/dev/null; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 install -y -qq --no-install-recommends aria2 zip ffmpeg
+          fi
           yt-dlp --version
           aria2c --version | head -1
           ffmpeg -version | head -1
 
       - name: Integration tests
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           bash test/integration.sh

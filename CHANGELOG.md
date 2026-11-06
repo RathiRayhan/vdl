@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.11] - 2026-11-06
+
+### Changed
+
+- CI hardening: jobs get a 20-minute timeout, a new push cancels
+  still-running workflows of the same ref, shellcheck/aria2c/zip reuse
+  what the runner image already ships, and yt-dlp installs from PyPI
+  instead of the apt mirror (which had been hanging mid-install).
+
 ## [2.2.10] - 2026-11-06
 
 ### Fixed
