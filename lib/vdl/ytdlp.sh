@@ -41,7 +41,7 @@ build_yt_common() {
 
     impersonate=''
     if (( ! no_impersonate )) && (( need_ytdlp )); then
-        local imp_target imp_list candidate
+        local imp_target imp_list
         imp_target=${VDL_IMPERSONATE:-auto}
         if [[ $imp_target != off && $imp_target != none ]]; then
             imp_list=''
@@ -50,13 +50,12 @@ build_yt_common() {
             fi
             if [[ $imp_target == auto ]]; then
                 for candidate in chrome firefox safari; do
-                    if imp_target_available "$imp_list" "$candidate"; then
-                        impersonate=$candidate
+                    if impersonate=$(imp_resolve_target "$imp_list" "$candidate"); then
                         break
                     fi
                 done
-            elif imp_target_available "$imp_list" "$imp_target"; then
-                impersonate=$imp_target
+            elif impersonate=$(imp_resolve_target "$imp_list" "$imp_target"); then
+                :
             else
                 warn "yt-dlp cannot impersonate '$imp_target'; --impersonate ignored"
             fi

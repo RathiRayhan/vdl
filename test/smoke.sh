@@ -33,7 +33,13 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --list-impersonate-targets "* ]]; then
     printf '[info] Available impersonate targets\n'
     printf 'Client    OS   Source\n'
     printf -- '----------------------------\n'
-    if [[ ${FAKE_IMPERSONATE:-} == yes ]]; then
+    if [[ ${FAKE_IMPERSONATE:-} == versioned ]]; then
+        printf 'Chrome-133    Macos-15    curl_cffi\n'
+        printf 'Chrome-136    Macos-15    curl_cffi\n'
+        printf 'Chrome-150    Macos-26    curl_cffi\n'
+        printf 'Chrome-152    Windows-10  curl_cffi\n'
+        printf 'Safari-17.2   Ios-17.2    curl_cffi\n'
+    elif [[ ${FAKE_IMPERSONATE:-} == yes ]]; then
         printf 'Chrome      -    curl_cffi\n'
     else
         printf 'Chrome      -    curl_cffi (unavailable)\n'
@@ -183,10 +189,21 @@ export FAKE_IMPERSONATE=yes
 run -n 'https://example.com/watch?v=abc'
 rc=$?
 unset FAKE_IMPERSONATE
-if [[ $rc -eq 0 ]] && arg_is '--impersonate' && arg_is chrome; then
+if [[ $rc -eq 0 ]] && arg_is '--impersonate' && arg_is Chrome; then
     ok
 else
     bad "impersonation should be enabled when yt-dlp reports chrome available"
+fi
+
+export FAKE_IMPERSONATE=versioned
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_IMPERSONATE
+if [[ $rc -eq 0 ]] && arg_is '--impersonate' && arg_is 'Chrome-136' \
+    && ! arg_has 'Chrome-133' && ! arg_has 'Chrome-150' && ! arg_has 'Chrome-152'; then
+    ok
+else
+    bad "auto impersonation should pick the newest native versioned target"
 fi
 
 # --- quality aliases -------------------------------------------------------

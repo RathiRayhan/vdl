@@ -126,5 +126,22 @@ expect_eq "yt_bar capitalizes every line" \
     '[Download] x
 [Info] y'
 
+# --- impersonation target resolution -----------------------------------------
+imp_list='Chrome-133    Macos-15  curl_cffi
+Chrome-136    Macos-15  curl_cffi
+Chrome-150    Macos-26  curl_cffi
+Chrome-152    Windows-10 curl_cffi
+Safari-17.2   Ios-17.2  curl_cffi'
+expect_eq "imp: newest native chrome" "$(imp_resolve_target "$imp_list" chrome)" 'Chrome-136'
+expect_eq "imp: safari family"        "$(imp_resolve_target "$imp_list" safari)" 'Safari-17.2'
+expect_eq "imp: exact version"        "$(imp_resolve_target "$imp_list" chrome-133)" 'Chrome-133'
+expect_eq "imp: exact newer version"  "$(imp_resolve_target "$imp_list" chrome-150)" 'Chrome-150'
+expect_fail_fn "imp: unknown family"  imp_resolve_target "$imp_list" firefox
+expect_fail_fn "imp: unavailable rows" \
+    imp_resolve_target 'Chrome      -    curl_cffi (unavailable)' chrome
+expect_eq "imp: bare target" \
+    "$(imp_resolve_target 'Chrome      -    curl_cffi' chrome)" 'Chrome'
+expect_fail_fn "imp: empty list"      imp_resolve_target '' chrome
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1
