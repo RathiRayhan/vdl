@@ -513,6 +513,28 @@ else
     bad "media downloads should use the normalized directory"
 fi
 
+# --- bare --download-dir names land in the default vdl folder ----------------
+run -n --download-dir custom-dir/ 'https://example.com/file.iso'
+if arg_is -d && arg_is "$home/Downloads/vdl/custom-dir"; then
+    ok
+else
+    bad "a bare --download-dir should be created inside the default vdl folder"
+fi
+
+run -n --no-impersonate --download-dir custom-dir 'https://example.com/watch?v=abc'
+if arg_has "home:$home/Downloads/vdl/custom-dir"; then
+    ok
+else
+    bad "media downloads should use the bare --download-dir folder"
+fi
+
+run -n --download-dir ./cwd-dir 'https://example.com/file.iso'
+if arg_is -d && arg_is './cwd-dir'; then
+    ok
+else
+    bad "a ./ prefixed --download-dir should stay current-directory-relative"
+fi
+
 # --- speed limits ----------------------------------------------------------
 run -n --max-speed 1M 'https://example.com/file.iso'
 if arg_is '--max-overall-download-limit=1048576' \

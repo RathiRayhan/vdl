@@ -397,7 +397,7 @@ Run `vdl --help` for the complete list. The most useful options:
 | `-n, --no-cookies` | Do not use cookies |
 | `-i, --batch-file FILE` | Read URLs from a file |
 | `-b, --browser NAME` | Browser cookie source or explicit profile |
-| `--download-dir DIR` | Override the save directory |
+| `--download-dir DIR` | Save under DIR; a bare name (`custom-dir`) is created inside the default vdl folder |
 | `--name NAME` | Custom filename, or playlist folder name |
 | `--output PATH` | Exact destination: file or folder for a single URL |
 | `--zip[=NAME.zip]` | Archive this run's downloads into a zip |

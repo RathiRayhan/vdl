@@ -6,20 +6,38 @@
 # traps, Ctrl+C handler, and the --output repointing.
 
 setup_paths() {
-    if [[ -n $download_dir ]]; then
-        save_dir=$download_dir
-    elif [[ -n ${VDL_SAVE_DIR:-} ]]; then
-        save_dir=$VDL_SAVE_DIR
-    else
-        download_base=''
-        if have xdg-user-dir; then
-            download_base=$(xdg-user-dir DOWNLOAD 2>/dev/null) || download_base=''
-        fi
-        if [[ -z $download_base || $download_base == "$HOME" ]]; then
-            download_base=$HOME/Downloads
-        fi
-        save_dir=$download_base/vdl
+    # The default save directory doubles as the base for bare --download-dir
+    # names: "custom-dir" lands inside the vdl folder, not the current
+    # working directory.
+    download_base=''
+    if have xdg-user-dir; then
+        download_base=$(xdg-user-dir DOWNLOAD 2>/dev/null) || download_base=''
     fi
+    if [[ -z $download_base || $download_base == "$HOME" ]]; then
+        download_base=$HOME/Downloads
+    fi
+    default_dir=$download_base/vdl
+
+    local dir
+    dir=''
+    [[ -n $download_dir ]] && dir=$download_dir
+    [[ -z $dir && -n ${VDL_SAVE_DIR:-} ]] && dir=$VDL_SAVE_DIR
+
+    if [[ -n $dir ]]; then
+        case $dir in
+            /*|~*|.*)
+                # Absolute, home-relative, or current-directory-relative.
+                save_dir=$dir
+                ;;
+            *)
+                save_dir=$default_dir/$dir
+                ;;
+        esac
+    else
+        save_dir=$default_dir
+    fi
+    # A leading ~ is the home directory (also when quoted).
+    save_dir=${save_dir/#~\//$HOME/}
     # A trailing slash would make joined paths show "dir//file".
     [[ $save_dir != / ]] && save_dir=${save_dir%/}
     tmp_dir=$save_dir/.tmp

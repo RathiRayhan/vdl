@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.9] - 2026-11-06
+
+### Added
+
+- A bare `--download-dir` name (`custom-dir`, `albums/xyz`) is created
+  inside the default vdl folder instead of the current directory.  Paths
+  starting with `/`, `~/`, or `./` keep their literal meaning.  A quoted
+  `~/path` now also expands to the home directory.
+
 ## [2.2.8] - 2026-11-06
 
 ### Changed

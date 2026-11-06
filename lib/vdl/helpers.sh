@@ -24,7 +24,7 @@ Options:
   -i, --batch-file FILE    Read URLs from FILE (repeatable)
       --no-aria            Do not use aria2c (direct files go to yt-dlp too)
       --no-impersonate     Disable browser TLS impersonation
-      --download-dir DIR   Override save directory for this run
+      --download-dir DIR   Save under DIR (bare names go in the vdl folder)
       --dry-run            Show what would be done, then exit
       --dedupe             Remove duplicate files downloaded in this run
       --images             Also download images embedded in album pages

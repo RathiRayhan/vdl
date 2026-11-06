@@ -273,6 +273,7 @@ limit) receives the stricter non-zero value.
 
 ```sh
 vdl --download-dir ~/tmp "https://example.com/file.zip"   # one-off override
+vdl --download-dir custom-dir "https://example.com/video"  # inside the default vdl folder
 VDL_SAVE_DIR=~/media vdl "https://example.com/video"      # or set the variable
 ```
 
