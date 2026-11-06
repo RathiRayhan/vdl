@@ -23,7 +23,7 @@ export VDL_SAVE_DIR=$tmp/dl
 export FAKE_LOG=$log
 export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
-unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
+unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR XDG_CACHE_HOME 2>/dev/null || true
 
 for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip vivaldi; do
     cat > "$fakebin/$cmd" <<'STUB'
@@ -78,8 +78,10 @@ if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_FAIL:-} == forbidden ]]; then
     exit 1
 fi
 if [[ ${0##*/} == vivaldi ]]; then
-    # UA probe target: launched headless in the background and polled via
-    # curl /json/version, then killed.  Stay silent.
+    printf 'VIVALDI %s\n' "${1:-}" >> "$FAKE_LOG"
+    if [[ ${1:-} == --version ]]; then
+        printf 'Vivaldi 8.2.4133.96 stable\n'
+    fi
     exit 0
 fi
 printf 'CALL %s\n' "${0##*/}" >> "$FAKE_LOG"
@@ -228,7 +230,9 @@ mkdir -p "$home/.config/vivaldi"
 run 'https://example.com/watch?v=abc'
 vivaldi_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
 if arg_is '--cookies-from-browser' && arg_is '--user-agent' \
-    && arg_is "$vivaldi_ua"; then
+    && arg_is "$vivaldi_ua" \
+    && grep -qxF 'VIVALDI --headless=new' "$log" \
+    && ls "$home/.cache/vdl"/ua-vivaldi-* >/dev/null 2>&1; then
     ok
 else
     bad "browser cookies should reuse the browser's exact User-Agent"
@@ -239,6 +243,15 @@ if arg_is '--user-agent' && arg_is 'MyBot/1.0' && ! arg_has 'Chrome/152.0.0.0'; 
     ok
 else
     bad "an explicit --user-agent should override the browser UA"
+fi
+
+run 'https://example.com/watch?v=abc'
+if arg_is '--user-agent' && arg_is "$vivaldi_ua" \
+    && grep -qxF 'VIVALDI --version' "$log" \
+    && ! grep -q 'VIVALDI --headless' "$log"; then
+    ok
+else
+    bad "a cached browser UA should skip the headless probe on later runs"
 fi
 
 # --- Cloudflare challenge hint -----------------------------------------------
