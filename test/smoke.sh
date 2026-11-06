@@ -245,6 +245,26 @@ else
     bad "Termux default should allow manual cookies without browser cookies"
 fi
 
+if TERMUX_VERSION=termux run -b vivaldi --no-impersonate \
+    'https://example.com/watch?v=abc' \
+    && arg_is '--cookies-from-browser' && ! arg_has '--user-agent' \
+    && ! grep -q '^VIVALDI' "$log"; then
+    ok
+else
+    bad "Termux should skip desktop browser User-Agent probing"
+fi
+
+export FAKE_YTDLP_FAIL=cloudflare
+TERMUX_VERSION=termux run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_FAIL
+if [[ $rc -ne 0 ]] && grep -q -- '--root-cookies' "$err" \
+    && grep -q -- '--cookies FILE' "$err"; then
+    ok
+else
+    bad "Termux Cloudflare hint should mention --root-cookies and --cookies"
+fi
+
 run --cookies "$home/missing.txt" 'https://example.com/watch?v=abc'
 rc=$?
 if [[ $rc -eq 2 ]] && grep -q 'Cookies file not found' "$err"; then

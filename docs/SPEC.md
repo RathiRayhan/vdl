@@ -170,6 +170,15 @@ stricter non-zero value when both flags are set.
   owner-only permissions, and uses `firefox:<staged-dir>`.
 - Chrome/Chromium/Brave/Edge are not supported for root import because their
   Android cookie values are Keystore-encrypted.  Export a `cookies.txt` file.
+- On desktop, browser cookies also mirror that browser's User-Agent: Chromium
+  families are probed headlessly, Firefox is derived from its version, and
+  the result is cached per browser version in `$XDG_CACHE_HOME/vdl/`.  An
+  explicit `--user-agent` wins.  Termux skips probing because Android app
+  browsers are not exposed as executables.
+- A failed run whose captured downloader output contains Cloudflare or
+  `403 Forbidden` prints a challenge hint after the summary.  The Termux hint
+  points at `--root-cookies`/`--cookies`; the desktop hint points at reusing
+  browser session cookies.
 
 ## Termux contract
 

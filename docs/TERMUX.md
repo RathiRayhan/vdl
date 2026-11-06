@@ -160,6 +160,15 @@ Termux runs as its own UID and yt-dlp's browser paths are desktop paths. Use
 `--root-cookies` for the supported Firefox case, a copied Firefox profile with
 `-b firefox:/path/to/profile`, or `--cookies` for everything else.
 
+Browser User-Agent mirroring is skipped on Termux because Android app browsers
+are not exposed as Termux executables. If a site binds cookies to its browser
+User-Agent, pass the matching `--user-agent` explicitly with `--root-cookies`
+or `--cookies`.
+
+If a download fails with a Cloudflare/403 challenge, vdl prints a Termux-aware
+hint pointing at `--root-cookies` or `--cookies`; solve the challenge in
+Firefox first.
+
 Cookies only apply to yt-dlp paths. For a cookie-protected direct link, add
 `--no-aria` so yt-dlp downloads the file instead of aria2c.
 
@@ -236,7 +245,8 @@ For long downloads, also:
   ```
 - TLS impersonation works only when `curl_cffi` can load. On arm64 with a
   current Android wheel it usually does; otherwise vdl silently continues
-  without it.
+  without it. When yt-dlp lists versioned targets, vdl picks the newest
+  version of the first supported family that curl_cffi can produce.
 - yt-dlp may need `yt-dlp-ejs` plus Deno/Node for YouTube. Install both and,
   on 32-bit, select Node in `~/.config/vdl/yt-dlp.conf` as shown above.
 

@@ -248,6 +248,11 @@ explicit `--user-agent` always wins. A run that fails with a 403 suggests
 opening the page in the browser once and rerunning, so the freshly solved
 cookies can be reused.
 
+On Termux, desktop browser probing is skipped: Android app browsers are not
+exposed as Termux executables. When using `--root-cookies` or a manual
+`cookies.txt`, set `--user-agent` explicitly if a site binds cookies to the
+browser's User-Agent.
+
 ### TLS impersonation
 
 ```sh

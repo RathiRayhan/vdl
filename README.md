@@ -428,6 +428,11 @@ This copies Firefox's plaintext `cookies.sqlite` into:
 The directory is owner-only. Close Firefox before running so the database is
 not mid-write. Stable, beta, and nightly Firefox packages are supported.
 
+Automatic browser User-Agent mirroring is a desktop feature and is skipped on
+Termux, because Android app browsers are not exposed as Termux executables.
+If a site binds its cookies to the browser's User-Agent, pass the matching
+`--user-agent` explicitly, especially with `--root-cookies` or `--cookies`.
+
 On a secondary Android user:
 
 ```sh
@@ -496,7 +501,9 @@ yt-dlp --list-impersonate-targets
 `curl_cffi` publishes Android arm64 wheels for current Python versions. On
 64-bit ARM phones it may work out of the box; on 32-bit ARM and x86_64 Termux
 there may be no compatible wheel. vdl silently skips impersonation when yt-dlp
-reports no available target.
+reports no available target. When targets are versioned (`Chrome-133`,
+`Chrome-136`), vdl picks the newest version of the first supported family
+that the installed curl_cffi can actually produce.
 
 Control it with:
 
@@ -841,6 +848,14 @@ require a PO token provider; see the yt-dlp guide linked above.
 - Use `--cookies` explicitly.
 - For a cookie-protected direct file, add `--no-aria`.
 - Chrome/Chromium cookies cannot be imported with root; export them instead.
+
+### A site returns 403 or a Cloudflare challenge
+
+vdl prints a hint when the downloader log contains Cloudflare or
+`403 Forbidden`. On Termux, solve the challenge in Firefox, then rerun with
+`--root-cookies` on a rooted device, or export a `cookies.txt` file and use
+`--cookies`. If the site binds cookies to the browser's User-Agent, also pass
+the matching `--user-agent`.
 
 ### `--root-cookies` fails
 
