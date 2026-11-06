@@ -79,6 +79,12 @@ sleep 0.5
 export HOME="$tmp/home" NO_COLOR=1
 B="http://127.0.0.1:$port"
 REAL="/usr/bin:/bin"
+# vdl runs with PATH limited to REAL, so include the directory yt-dlp
+# actually lives in (apt puts it in /usr/bin, pip in ~/.local/bin, a venv
+# somewhere else entirely).
+if yt_bin=$(command -v yt-dlp 2>/dev/null) && [[ $yt_bin != /usr/bin/* ]]; then
+    REAL="$(dirname -- "$yt_bin"):$REAL"
+fi
 DL="$tmp/home/Downloads/vdl"
 
 run_vdl() { PATH="$REAL" bash "$root/bin/vdl" "$@" >"$LOG" 2>&1; }
@@ -204,5 +210,9 @@ check "sweep rc" test $rc -eq 0
 check "stale aria2 swept" test ! -e "$DL/stale.iso" -a ! -e "$DL/stale.iso.aria2"
 check "fresh aria2 kept" test -f "$DL/fresh.iso" -a -f "$DL/fresh.iso.aria2"
 
+if (( fail )); then
+    printf '\n--- debug: last vdl log ---\n'
+    sed 's/^/    /' "$LOG" | tail -n 40
+fi
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

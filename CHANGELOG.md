@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.12] - 2026-11-06
+
+### Fixed
+
+- The integration suite now locates yt-dlp wherever it is installed
+  (apt's /usr/bin, pip's ~/.local/bin, or a venv) instead of assuming
+  /usr/bin, which broke CI after yt-dlp moved to a pip install.  Failures
+  also dump the last vdl log for easier diagnosis.
+
 ## [2.2.11] - 2026-11-06
 
 ### Changed
