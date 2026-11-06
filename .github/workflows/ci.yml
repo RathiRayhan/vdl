@@ -61,18 +61,27 @@ jobs:
 
       - name: Install real tools
         run: |
-          # yt-dlp and a static ffmpeg/ffprobe live in a venv at a fixed
-          # path: the suite runs downloads under an isolated HOME, which
-          # hides pip --user modules and broke media downloads.  A venv's
-          # scripts carry absolute shebangs, so they keep working.
-          python3 -m venv /home/runner/vdl-tools
-          /home/runner/vdl-tools/bin/pip install --quiet --no-input yt-dlp static-ffmpeg
-          FF="$(/home/runner/vdl-tools/bin/python -c 'from static_ffmpeg import run; print(run.get_or_fetch_platform_executables_else_raise()[0])')"
-          dirname "$FF" >> "$GITHUB_PATH"
-          echo "/home/runner/vdl-tools/bin" >> "$GITHUB_PATH"
-          yt-dlp --version
-          aria2c --version | head -1
-          ffmpeg -version | head -1
+          {
+            # yt-dlp and a static ffmpeg/ffprobe live in a venv at a fixed
+            # path: the suite runs downloads under an isolated HOME, which
+            # hides pip --user modules and broke media downloads.  A venv's
+            # scripts carry absolute shebangs, so they keep working.  The
+            # runner's python3 may lack ensurepip, so fall back to virtualenv.
+            python3 -m venv /home/runner/vdl-tools || {
+              python3 -m pip install --user --quiet --no-input virtualenv
+              python3 -m virtualenv /home/runner/vdl-tools
+            }
+            /home/runner/vdl-tools/bin/pip install --quiet --no-input yt-dlp static-ffmpeg
+            FF="$(/home/runner/vdl-tools/bin/python -c 'from static_ffmpeg import run; print(run.get_or_fetch_platform_executables_else_raise()[0])')"
+            dirname "$FF" >> "$GITHUB_PATH"
+            echo "/home/runner/vdl-tools/bin" >> "$GITHUB_PATH"
+            yt-dlp --version
+            aria2c --version | head -1
+            ffmpeg -version | head -1
+          } > /tmp/install-out.log 2>&1
+          rc=$?
+          tail -n 40 /tmp/install-out.log
+          exit $rc
 
       - name: Integration tests
         run: |
@@ -89,6 +98,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
+            echo 'install step output:'
+            tail -n 30 /tmp/install-out.log 2>/dev/null || true
+            echo
             echo 'integration step output:'
             tail -n 80 /tmp/int-out.log 2>/dev/null || true
             echo
