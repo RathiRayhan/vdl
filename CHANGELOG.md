@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.8] - 2026-11-06
+
+### Changed
+
+- Branded as **vdl — Versatile Downloader for Linux and Termux** across the
+  banner, README, man page, usage text, and the user guide.
+
 ## [2.2.7] - 2026-11-06
 
 ### Fixed

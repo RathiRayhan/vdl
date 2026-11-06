@@ -1,4 +1,4 @@
-# vdl on Termux
+# vdl — Versatile Downloader on Termux
 
 `vdl` is a Bash script, so it runs on Android through
 [Termux](https://termux.dev/) without a compiled port. Termux supplies both

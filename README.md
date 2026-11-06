@@ -1,12 +1,11 @@
-# vdl for Termux
+# vdl — Versatile Downloader for Termux
 
 [![CI](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Termux](https://img.shields.io/badge/platform-Termux-3DDC84)](https://termux.dev/)
 
-A fast, resumable command-line downloader for Android, built for
-[Termux](https://termux.dev/). `vdl` routes every URL to the right engine
-automatically:
+**vdl — Versatile Downloader for Termux.** A fast, resumable command-line
+downloader for Android: routes every URL to the right engine automatically:
 
 - **Direct files** — archives, disk images, documents, packages, plain video
   files, magnet links, and `.torrent` files — go through **aria2c** with

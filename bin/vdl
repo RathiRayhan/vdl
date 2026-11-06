@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # globals declared/written here are used by lib/vdl/*.sh
-# vdl - portable smart downloader for Linux and Termux (yt-dlp + aria2c)
+# vdl - versatile downloader for Linux and Termux (yt-dlp + aria2c)
 #
 # Requires: bash 4+, yt-dlp.
 # Optional: aria2c, ffmpeg, curl_cffi (browser impersonation),
@@ -30,7 +30,7 @@
 
 set -u -o pipefail
 
-readonly VDL_VERSION="2.2.7"
+readonly VDL_VERSION="2.2.8"
 
 # Resolve the script's real location first, so a symlinked vdl on PATH can
 # still find its libraries.
