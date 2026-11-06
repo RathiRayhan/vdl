@@ -10,7 +10,7 @@ set -u
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'kill ${srv:-0} 2>/dev/null || true; rm -rf "$tmp"' EXIT
+trap 'kill ${srv:-0} 2>/dev/null || true; [[ -n ${VDL_INT_KEEP:-} ]] || rm -rf "$tmp"' EXIT
 
 pass=0
 fail=0
@@ -79,6 +79,14 @@ sleep 0.5
 export HOME="$tmp/home" NO_COLOR=1
 B="http://127.0.0.1:$port"
 REAL="/usr/bin:/bin"
+# vdl runs with PATH limited to REAL, so include the directories yt-dlp and
+# ffmpeg actually live in (apt puts them in /usr/bin, pip in ~/.local/bin,
+# a venv or a static build somewhere else entirely).
+for tool in yt-dlp ffmpeg; do
+    if tb=$(command -v "$tool" 2>/dev/null) && [[ $tb != /usr/bin/* ]]; then
+        REAL="$(dirname -- "$tb"):$REAL"
+    fi
+done
 DL="$tmp/home/Downloads/vdl"
 
 run_vdl() { PATH="$REAL" bash "$root/bin/vdl" "$@" >"$LOG" 2>&1; }
@@ -204,5 +212,9 @@ check "sweep rc" test $rc -eq 0
 check "stale aria2 swept" test ! -e "$DL/stale.iso" -a ! -e "$DL/stale.iso.aria2"
 check "fresh aria2 kept" test -f "$DL/fresh.iso" -a -f "$DL/fresh.iso.aria2"
 
+if (( fail )); then
+    printf '\n--- debug: last vdl log ---\n'
+    sed 's/^/    /' "$LOG" | tail -n 40
+fi
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

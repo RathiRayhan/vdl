@@ -20,6 +20,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.18] - 2026-11-06
+
+### Changed
+
+- CI hardening: the pipeline avoids apt for downloader tools, uses a
+  fixed-path venv for yt-dlp/static ffmpeg, has 20-minute job timeouts,
+  cancels superseded runs, and reports integration failure logs as commit
+  comments. The integration suite locates yt-dlp/ffmpeg wherever they are
+  installed and supports keeping its temp directory with `VDL_INT_KEEP=1`.
+
+## [2.2.10] - 2026-11-06
+
+### Fixed
+
+- Made the browser-UA smoke test deterministic by removing a racy probe-launch
+  assertion.
+
 ## [2.2.9] - 2026-11-06
 
 ### Added
