@@ -7,50 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.2.15] - 2026-11-06
-
-### Fixed
-
-- CI installs yt-dlp and the static ffmpeg into a fixed-path venv:
-  pip's `--user` installs are rooted at `HOME`, and the integration
-  suite's isolated test `HOME` hid the `yt_dlp` module, breaking every
-  media download on the runner.
-
-## [2.2.14] - 2026-11-06
+## [2.2.18] - 2026-11-06
 
 ### Changed
 
-- CI posts a public commit comment with the failing log whenever the
-  integration job fails, so failures can be diagnosed without admin log
-  access.  The integration suite can keep its temp directory for that
-  purpose via `VDL_INT_KEEP=1`.
-
-## [2.2.13] - 2026-11-06
-
-### Fixed
-
-- CI no longer touches apt at all: ffmpeg/ffprobe now come from the
-  `static-ffmpeg` PyPI package (like yt-dlp), eliminating the apt-mirror
-  hangs that stalled integration jobs.  The integration suite resolves
-  both yt-dlp and ffmpeg wherever they are installed.
-
-## [2.2.12] - 2026-11-06
-
-### Fixed
-
-- The integration suite now locates yt-dlp wherever it is installed
-  (apt's /usr/bin, pip's ~/.local/bin, or a venv) instead of assuming
-  /usr/bin, which broke CI after yt-dlp moved to a pip install.  Failures
-  also dump the last vdl log for easier diagnosis.
-
-## [2.2.11] - 2026-11-06
-
-### Changed
-
-- CI hardening: jobs get a 20-minute timeout, a new push cancels
-  still-running workflows of the same ref, shellcheck/aria2c/zip reuse
-  what the runner image already ships, and yt-dlp installs from PyPI
-  instead of the apt mirror (which had been hanging mid-install).
+- CI hardening: the pipeline no longer touches apt at all (shellcheck,
+  aria2c and zip come from the runner image; yt-dlp and a static
+  ffmpeg/ffprobe from PyPI), so apt-mirror hangs can no longer stall
+  jobs.  The downloader tools live in a fixed-path venv that is immune to
+  the integration suite's isolated HOME, jobs carry a 20-minute timeout,
+  a new push cancels in-flight runs of the same ref, and failures post
+  their logs as public commit comments.  The integration suite resolves
+  yt-dlp and ffmpeg wherever they are installed and keeps its temp
+  directory on failure via VDL_INT_KEEP=1.
 
 ## [2.2.10] - 2026-11-06
 
