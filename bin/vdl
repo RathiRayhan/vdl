@@ -30,7 +30,7 @@
 
 set -u -o pipefail
 
-readonly VDL_VERSION="2.2.6"
+readonly VDL_VERSION="2.2.7"
 
 # Resolve the script's real location first, so a symlinked vdl on PATH can
 # still find its libraries.
