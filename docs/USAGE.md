@@ -99,7 +99,7 @@ install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl`; Termux: `~/storage/downloads/vdl` | exact download directory |
+| `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl`; Termux: `~/storage/downloads/vdl` | download directory; a bare name is relative to the default vdl folder |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max video height |
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers (temp files, stale aria2c partials) this long |
@@ -319,6 +319,7 @@ limit) receives the stricter non-zero value.
 
 ```sh
 vdl --download-dir ~/tmp "https://example.com/file.zip"   # one-off override
+vdl --download-dir custom-dir "https://example.com/video"  # inside the default vdl folder
 VDL_SAVE_DIR=~/media vdl "https://example.com/video"      # or set the variable
 ```
 

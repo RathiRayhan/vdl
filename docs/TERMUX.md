@@ -79,8 +79,14 @@ Override it for a single run or permanently:
 
 ```sh
 vdl --download-dir ~/storage/downloads/videos "https://example.com/video"
+vdl --download-dir videos "https://example.com/video"
+# -> ~/storage/downloads/vdl/videos
+
 export VDL_SAVE_DIR=~/storage/downloads/videos
 ```
+
+A bare name (no `/`, `~`, or leading `.`) is created inside the default vdl
+folder; absolute, `~/`, and `./` paths keep their literal meaning.
 
 On Android 11+, grant Termux storage access when prompted by
 `termux-setup-storage`; some OEM firmware also requires "All files access" in

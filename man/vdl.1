@@ -1,4 +1,4 @@
-.TH VDL 1 "2026-11-06" "vdl 2.2.8" "User Commands"
+.TH VDL 1 "2026-11-06" "vdl 2.2.9" "User Commands"
 .SH NAME
 vdl \- versatile downloader for Linux and Termux (yt-dlp + aria2c)
 .SH SYNOPSIS
@@ -61,9 +61,9 @@ Output goes to \fIsave_dir\fR/audio.
 Read URLs from FILE (repeatable).
 .TP
 .B \-\-download-dir \fIDIR\fR
-Override
-.IR VDL_SAVE_DIR
-for this invocation.
+Save under DIR for this invocation.  A bare name such as \fIcustom-dir\fR
+is created inside the default vdl folder; absolute, \fI~\fR, and \fI./\fR
+paths keep their literal meaning.
 .TP
 .B \-\-no-aria
 Do not use aria2c; direct files go to yt-dlp as well.

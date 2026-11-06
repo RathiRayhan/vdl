@@ -307,7 +307,13 @@ Override the location for one run:
 
 ```sh
 vdl --download-dir ~/storage/downloads/videos "https://example.com/video"
+vdl --download-dir videos "https://example.com/video"
+# -> ~/storage/downloads/vdl/videos
 ```
+
+A bare name (no `/`, `~`, or leading `.`) is created inside the default vdl
+folder. `VDL_SAVE_DIR` works the same way; absolute, `~/`, and `./` paths keep
+their literal meaning.
 
 Or permanently:
 
@@ -528,7 +534,7 @@ Run `vdl --help` for the complete list. The most useful options on Termux:
 | `-b, --browser NAME` | Browser cookie source or explicit profile |
 | `--cookies FILE` | Netscape cookies.txt file |
 | `--root-cookies` | Import Firefox Android cookies via root |
-| `--download-dir DIR` | Override the save directory |
+| `--download-dir DIR` | Save under DIR; bare names land in the default vdl folder |
 | `--name NAME` | Custom filename, or playlist folder name |
 | `--output PATH` | Exact file path or folder for a single URL |
 | `--zip[=NAME.zip]` | Archive this run's downloads |
@@ -561,7 +567,7 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/vide
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `VDL_SAVE_DIR` | `~/storage/downloads/vdl` | download directory |
+| `VDL_SAVE_DIR` | `~/storage/downloads/vdl` | download directory; a bare name is relative to the default vdl folder |
 | `VDL_BROWSER` | auto-detect | default cookie source; auto-detection is disabled on Termux |
 | `VDL_QUALITY` | `1080` | default maximum height |
 | `VDL_COOKIES` | unset | Netscape cookies.txt file |

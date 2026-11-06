@@ -541,6 +541,16 @@ else
     bad "Termux should default to ~/storage/downloads/vdl when storage is set up"
 fi
 
+if ( unset VDL_SAVE_DIR; HOME=$termux_home TERMUX_VERSION=termux \
+        PATH="$fakebin:/usr/bin:/bin" bash "$root/bin/vdl" -n \
+        --download-dir custom-dir 'https://example.com/file.iso' \
+        >"$out" 2>"$err" ) \
+    && arg_is -d && arg_is "$termux_home/storage/downloads/vdl/custom-dir"; then
+    ok
+else
+    bad "Termux bare --download-dir names should land in the shared-storage vdl folder"
+fi
+
 # --- quiet mode ------------------------------------------------------------
 run -n --quiet --dry-run 'https://example.com/watch?v=x'
 if ! grep -q '== vdl' "$out" && grep -q 'dry-run' "$out"; then
@@ -658,6 +668,28 @@ if arg_has "home:$ddir" && ! arg_has "home:$ddir/" \
     ok
 else
     bad "media downloads should use the normalized directory"
+fi
+
+# --- bare --download-dir names land in the default vdl folder ----------------
+run -n --download-dir custom-dir/ 'https://example.com/file.iso'
+if arg_is -d && arg_is "$home/Downloads/vdl/custom-dir"; then
+    ok
+else
+    bad "a bare --download-dir should be created inside the default vdl folder"
+fi
+
+run -n --no-impersonate --download-dir custom-dir 'https://example.com/watch?v=abc'
+if arg_has "home:$home/Downloads/vdl/custom-dir"; then
+    ok
+else
+    bad "media downloads should use the bare --download-dir folder"
+fi
+
+run -n --download-dir ./cwd-dir 'https://example.com/file.iso'
+if arg_is -d && arg_is './cwd-dir'; then
+    ok
+else
+    bad "a ./ prefixed --download-dir should stay current-directory-relative"
 fi
 
 # --- speed limits ----------------------------------------------------------

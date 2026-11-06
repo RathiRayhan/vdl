@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.9] - 2026-11-06
+
+### Added
+
+- A bare `--download-dir` name (`custom-dir`, `albums/xyz`) is created
+  inside the default vdl folder instead of the current directory.  Paths
+  starting with `/`, `~/`, or `./` keep their literal meaning.  A quoted
+  `~/path` now also expands to the home directory.  On Termux the default
+  vdl folder is `~/storage/downloads/vdl` when shared storage is set up.
+
 ## [2.2.8] - 2026-11-06
 
 ### Changed

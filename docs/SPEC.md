@@ -153,6 +153,16 @@ stricter non-zero value when both flags are set.
   drops the `%(playlist_title)s` prefix, so playlist items land directly
   inside PATH; audio mode also writes into PATH instead of `audio/`.
 
+## Path resolution
+
+- The default vdl folder is `~/Downloads/vdl` on Linux, or
+  `~/storage/downloads/vdl` on Termux when `termux-setup-storage` has run.
+- A bare `--download-dir`/`VDL_SAVE_DIR` name (`custom-dir`, `albums/xyz`)
+  is relative to that default vdl folder.
+- Paths starting with `/`, `~/`, or `./` (or another leading dot) are used
+  literally; a quoted `~/path` expands to the home directory.
+- Trailing slashes are removed and `VDL_TMP_KEEP_DAYS` controls cleanup.
+
 ## Cookie contract
 
 - `--cookies FILE` / `VDL_COOKIES` / `COOKIES=` adds a yt-dlp `--cookies`
