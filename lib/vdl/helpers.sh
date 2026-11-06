@@ -224,9 +224,21 @@ chromium_ua() {
     chrome_ua_from_headless "$ua"
 }
 
+# The cache file for a probed browser User-Agent.  Keyed by browser name and
+# its --version line, so the headless probe reruns only after an update.
+vdl_ua_cache_path() {
+    local name=${1:-} ver=${2:-} dir
+    [[ -n $name && -n $ver ]] || return 1
+    dir=${XDG_CACHE_HOME:-$HOME/.cache}/vdl
+    printf '%s/ua-%s-%s\n' "$dir" "$name" \
+        "$(printf '%s' "$ver" | tr -c '[:alnum:]' '-' | tr -s '-')"
+}
+
 # When cookies come from a real browser, mirror that browser's User-Agent.
 # Cloudflare's clearance cookie is bound to the UA that solved the challenge,
-# so a mismatched UA would make the cookies useless.
+# so a mismatched UA would make the cookies useless.  Chromium-family UAs
+# need a headless probe, so its result is cached per browser version and the
+# probe reruns only after the browser updates.
 match_browser_ua() {
     [[ -n $ua ]] && return 0
     [[ $browser == none ]] && return 0
@@ -238,18 +250,38 @@ match_browser_ua() {
         return 0
     fi
 
-    local name=${browser%%:*} bin
+    local name=${browser%%:*} bin ver cache_file cache_dir
     name=${name,,}
     while IFS= read -r bin; do
         have "$bin" || continue
-        note "Probing $name for its User-Agent…"
+        ver=$(timeout 8 "$bin" --version 2>/dev/null) || ver=''
         case $name in
             firefox)
-                ua=$(firefox_ua_for_version "$(timeout 8 "$bin" --version 2>/dev/null)") ;;
+                # Derived from the version alone; no probe to cache.
+                ua=$(firefox_ua_for_version "$ver")
+                [[ -n $ua ]] && break
+                ;;
             *)
-                ua=$(chromium_ua "$bin") ;;
+                if [[ -n $ver ]]; then
+                    cache_file=$(vdl_ua_cache_path "$name" "$ver") || cache_file=''
+                    if [[ -n $cache_file && -f $cache_file ]]; then
+                        ua=$(<"$cache_file")
+                        [[ $ua == Mozilla/* ]] || ua=''
+                    fi
+                fi
+                if [[ -z $ua ]]; then
+                    note "Probing $name for its User-Agent…"
+                    ua=$(chromium_ua "$bin")
+                    if [[ -n $ua && -n $cache_file ]]; then
+                        cache_dir=$(dirname -- "$cache_file")
+                        mkdir -p "$cache_dir" 2>/dev/null
+                        rm -f "$cache_dir"/ua-"$name"-*
+                        printf '%s\n' "$ua" > "$cache_file" 2>/dev/null || true
+                    fi
+                fi
+                [[ -n $ua ]] && break
+                ;;
         esac
-        [[ -n $ua ]] && break
     done < <(browser_binary "$name")
 }
 

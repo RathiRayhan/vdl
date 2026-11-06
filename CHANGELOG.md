@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.5] - 2026-11-06
+
+### Changed
+
+- The probed browser User-Agent is cached per browser version in
+  `~/.cache/vdl/`, so the headless probe runs only after a browser update
+  instead of on every cookie-enabled run.  Termux still skips desktop
+  browser probing entirely.
+
 ## [2.2.4] - 2026-11-06
 
 ### Added

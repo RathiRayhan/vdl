@@ -163,5 +163,14 @@ expect_eq "firefox ua from version" \
     'Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0'
 expect_fail_fn "firefox ua rejects garbage" firefox_ua_for_version 'not a browser'
 
+# --- UA cache path -----------------------------------------------------------
+expect_eq "ua cache path honors XDG_CACHE_HOME" \
+    "$(XDG_CACHE_HOME=/x vdl_ua_cache_path vivaldi 'Vivaldi 8.2.4133.96 stable')" \
+    '/x/vdl/ua-vivaldi-Vivaldi-8-2-4133-96-stable'
+expect_eq "ua cache path falls back to HOME" \
+    "$(vdl_ua_cache_path brave 'Brave Browser 1.2.3')" \
+    "$HOME/.cache/vdl/ua-brave-Brave-Browser-1-2-3"
+expect_fail_fn "ua cache path needs a version" vdl_ua_cache_path vivaldi ''
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

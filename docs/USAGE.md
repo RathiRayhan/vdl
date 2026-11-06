@@ -240,11 +240,13 @@ probes. Direct aria2c downloads do not receive browser cookies; use
 `--no-aria` for cookie-protected direct links.
 
 When cookies come from a browser, vdl also mirrors that browser's
-User-Agent (probed from the installed binary). Cloudflare's clearance
-cookie is bound to the User-Agent that solved its challenge, so the match
-keeps the cookies valid. An explicit `--user-agent` always wins. A run
-that fails with a 403 suggests opening the page in the browser once and
-rerunning, so the freshly solved cookies can be reused.
+User-Agent (probed from the installed binary, cached per browser version
+in `~/.cache/vdl/`). Cloudflare's clearance cookie is bound to the
+User-Agent that solved its challenge, so the match keeps the cookies
+valid; the headless probe reruns only after the browser updates. An
+explicit `--user-agent` always wins. A run that fails with a 403 suggests
+opening the page in the browser once and rerunning, so the freshly solved
+cookies can be reused.
 
 ### TLS impersonation
 
