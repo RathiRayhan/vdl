@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.7] - 2026-11-06
+
+### Fixed
+
+- Removed an unused variable in the clipboard reader that ShellCheck 0.9
+  flagged, restoring a green lint job in CI.
+
 ## [2.2.6] - 2026-11-06
 
 ### Fixed

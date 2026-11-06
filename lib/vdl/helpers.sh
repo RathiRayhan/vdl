@@ -216,7 +216,7 @@ match_browser_ua() {
 }
 
 read_clipboard() {
-    local out='' line=''
+    local out=''
 
     if [[ -n ${WAYLAND_DISPLAY:-} ]] && have wl-paste; then
         out=$(wl-paste -n 2>/dev/null) || out=''
