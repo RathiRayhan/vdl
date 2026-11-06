@@ -229,12 +229,7 @@ read_clipboard() {
     fi
 
     [[ -n $out ]] || return 1
-
-    IFS= read -r line <<< "$out" || true
-    line=${line%$'\r'}
-    line=${line#"${line%%[![:space:]]*}"}
-    line=${line%"${line##*[![:space:]]}"}
-    printf '%s\n' "$line"
+    printf '%s\n' "$out"
 }
 
 normalize_quality() {

@@ -80,10 +80,20 @@ collect_urls() {
     fi
 
     if (( ${#urls[@]} == 0 )); then
-        local clip
-        if clip=$(read_clipboard) && [[ $clip =~ ^https?:// ]]; then
-            urls+=("$clip")
-            note "Auto-grabbed URL from clipboard"
+        local clip line
+        clip=$(read_clipboard) || clip=''
+        if [[ -n $clip ]]; then
+            # Clipboard content is split like a pasted block: URL lines
+            # queue up, everything else is ignored.
+            while IFS= read -r line || [[ -n $line ]]; do
+                line=${line%$'\r'}
+                line=${line#"${line%%[![:space:]]*}"}
+                line=${line%"${line##*[![:space:]]}"}
+                collect_token "$line" paste
+            done <<< "$clip"
+        fi
+        if (( ${#urls[@]} )); then
+            note "Auto-grabbed ${#urls[@]} URL(s) from clipboard"
         else
             err "No valid URL, batch file, or clipboard link found."
             printf '    Run vdl --help for usage.\n' >&2
