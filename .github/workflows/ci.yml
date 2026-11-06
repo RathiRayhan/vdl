@@ -71,8 +71,10 @@ jobs:
               python3 -m pip install --user --quiet --no-input virtualenv
               python3 -m virtualenv /home/runner/vdl-tools
             }
-            /home/runner/vdl-tools/bin/pip install --quiet --no-input yt-dlp static-ffmpeg
-            FF="$(/home/runner/vdl-tools/bin/python -c 'from static_ffmpeg import run; print(run.get_or_fetch_platform_executables_else_raise()[0])')"
+            export PATH="/home/runner/vdl-tools/bin:$PATH"
+            pip install --quiet --no-input yt-dlp static-ffmpeg
+            FF="$(python -c 'from static_ffmpeg import run; print(run.get_or_fetch_platform_executables_else_raise()[0])')"
+            export PATH="$(dirname "$FF"):$PATH"
             dirname "$FF" >> "$GITHUB_PATH"
             echo "/home/runner/vdl-tools/bin" >> "$GITHUB_PATH"
             yt-dlp --version
