@@ -593,8 +593,9 @@ WAKELOCK=1
 IMAGES=1
 ```
 
-Command-line flags take precedence over exported environment variables, which
-take precedence over this file.
+A Termux-ready starter file is included at
+[`config.example`](config.example). Command-line flags take precedence over
+exported environment variables, which take precedence over this file.
 
 ### Extra yt-dlp options
 

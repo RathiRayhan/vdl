@@ -125,6 +125,9 @@ The same value can be set permanently:
 COOKIES=~/storage/downloads/cookies.txt
 ```
 
+A Termux-ready starter configuration is included at
+[`config.example`](../config.example).
+
 or in the environment:
 
 ```sh

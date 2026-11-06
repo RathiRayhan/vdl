@@ -1,7 +1,18 @@
-# vdl example configuration.
+# vdl example configuration for Termux.
 # Copy to ~/.config/vdl/config (or $VDL_CONFIG_DIR/config) and adjust.
 # Precedence: command-line flags > VDL_* environment variables > this file > built-ins.
 
-BROWSER=vivaldi
+# Termux cannot read Android browser profiles automatically.
+# Use BROWSER=none, a copied profile path, or a manual cookies file.
+BROWSER=none
 QUALITY=1080
-SAVE_DIR=~/Downloads/vdl
+SAVE_DIR=~/storage/downloads/vdl
+
+# Optional manual cookies (Netscape cookies.txt format):
+# COOKIES=~/storage/downloads/cookies.txt
+
+# Optional root-only Firefox for Android cookie import:
+# ROOT_COOKIES=1
+
+# Hold a Termux wake lock during downloads (default: 1).
+WAKELOCK=1

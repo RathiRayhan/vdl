@@ -139,6 +139,10 @@ COOKIES=~/storage/downloads/cookies.txt
 WAKELOCK=1
 ```
 
+A starter file is included at [`config.example`](../config.example). Note
+that `VDL_CONFIG_DIR` points to the **directory**, and the file is
+`$VDL_CONFIG_DIR/config`.
+
 ### Extra yt-dlp options
 
 `VDL_CONFIG` points to an ordinary yt-dlp config file (default
