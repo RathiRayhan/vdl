@@ -57,15 +57,14 @@ jobs:
 
       - name: Install real tools
         run: |
-          # yt-dlp comes from PyPI (fast, no apt mirror involved); aria2c
-          # and zip ship with the runner image; ffmpeg is apt-installed
-          # only when the image does not provide it.
+          # yt-dlp and a static ffmpeg/ffprobe both come from PyPI, so no
+          # apt mirror is involved at all (aria2c and zip ship with the
+          # runner image).
           export PATH="$HOME/.local/bin:$PATH"
-          python3 -m pip install --user --quiet --no-input yt-dlp
-          if ! command -v aria2c >/dev/null || ! command -v zip >/dev/null || ! command -v ffmpeg >/dev/null; then
-            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -qq
-            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=120 install -y -qq --no-install-recommends aria2 zip ffmpeg
-          fi
+          python3 -m pip install --user --quiet --no-input yt-dlp static-ffmpeg
+          FF="$(python3 -c 'from static_ffmpeg import run; print(run.get_or_fetch_platform_executables_else_raise()[0])')"
+          dirname "$FF" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           yt-dlp --version
           aria2c --version | head -1
           ffmpeg -version | head -1

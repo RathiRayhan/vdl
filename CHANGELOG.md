@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.13] - 2026-11-06
+
+### Fixed
+
+- CI no longer touches apt at all: ffmpeg/ffprobe now come from the
+  `static-ffmpeg` PyPI package (like yt-dlp), eliminating the apt-mirror
+  hangs that stalled integration jobs.  The integration suite resolves
+  both yt-dlp and ffmpeg wherever they are installed.
+
 ## [2.2.12] - 2026-11-06
 
 ### Fixed

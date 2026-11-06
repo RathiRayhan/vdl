@@ -79,12 +79,14 @@ sleep 0.5
 export HOME="$tmp/home" NO_COLOR=1
 B="http://127.0.0.1:$port"
 REAL="/usr/bin:/bin"
-# vdl runs with PATH limited to REAL, so include the directory yt-dlp
-# actually lives in (apt puts it in /usr/bin, pip in ~/.local/bin, a venv
-# somewhere else entirely).
-if yt_bin=$(command -v yt-dlp 2>/dev/null) && [[ $yt_bin != /usr/bin/* ]]; then
-    REAL="$(dirname -- "$yt_bin"):$REAL"
-fi
+# vdl runs with PATH limited to REAL, so include the directories yt-dlp and
+# ffmpeg actually live in (apt puts them in /usr/bin, pip in ~/.local/bin,
+# a venv or a static build somewhere else entirely).
+for tool in yt-dlp ffmpeg; do
+    if tb=$(command -v "$tool" 2>/dev/null) && [[ $tb != /usr/bin/* ]]; then
+        REAL="$(dirname -- "$tb"):$REAL"
+    fi
+done
 DL="$tmp/home/Downloads/vdl"
 
 run_vdl() { PATH="$REAL" bash "$root/bin/vdl" "$@" >"$LOG" 2>&1; }
