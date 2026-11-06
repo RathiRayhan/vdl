@@ -786,6 +786,16 @@ else
 fi
 unset XDG_CONFIG_HOME
 
+vcdir=$tmp/cfgdir
+mkdir -p "$vcdir"
+printf 'QUALITY=480\n' > "$vcdir/config"
+VDL_CONFIG_DIR=$vcdir run -n 'https://example.com/watch?v=abc'
+if arg_has 'height<=480'; then
+    ok
+else
+    bad "VDL_CONFIG_DIR/config should set default quality"
+fi
+
 # --- 8k quality alias ------------------------------------------------------
 run -n -q 8k 'https://example.com/watch?v=abc'
 if arg_has 'height<=4320'; then ok; else bad "8k should map to 4320"; fi

@@ -1,0 +1,7 @@
+# vdl example configuration.
+# Copy to ~/.config/vdl/config (or $VDL_CONFIG_DIR/config) and adjust.
+# Precedence: command-line flags > VDL_* environment variables > this file > built-ins.
+
+BROWSER=vivaldi
+QUALITY=1080
+SAVE_DIR=~/Downloads/vdl

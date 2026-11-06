@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.20] - 2026-11-06
+
+### Added
+
+- `config.example` in the repository root as a copyable starter config.
+
+### Fixed
+
+- `VDL_CONFIG_DIR` now points at the directory holding the config file
+  (`$VDL_CONFIG_DIR/config`), as documented; previously a set
+  `VDL_CONFIG_DIR` made vdl look for the directory itself and silently
+  ignore the config.
+
 ## [2.2.19] - 2026-11-06
 
 ### Fixed
