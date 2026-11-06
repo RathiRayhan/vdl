@@ -201,15 +201,31 @@ normalize_quality() {
 }
 
 # yt-dlp's own capability list is authoritative: curl_cffi may be importable
-# and still unusable (wrong version, different Python, missing libcurl). The
-# table marks unavailable targets with "(unavailable)" and target names are
-# listed in the first column.
-imp_target_available() {
-    local list=${1:-} target=${2:-}
-    [[ -n $list && -n $target ]] || return 1
-    printf '%s\n' "$list" | awk -v t="$target" '
-        tolower($1) == tolower(t) && $0 !~ /\(unavailable\)/ { found = 1 }
-        END { exit !found }
+# and still unusable for individual targets (a too-old curl_cffi).  Target
+# names sit in the first column, either bare ("Chrome") or versioned
+# ("Chrome-133"), with the OS in the second.  A bare request matches the
+# family's versioned rows, but only those sharing the OS of the family's
+# first row — those are the targets the installed curl_cffi natively ships;
+# later rows can need a newer curl_cffi than the one installed.  The highest
+# version among them wins.  An explicit versioned request picks exactly
+# that target.
+imp_resolve_target() {
+    local list=${1:-} want=${2:-}
+    [[ -n $list && -n $want ]] || return 1
+    printf '%s\n' "$list" | awk -v w="$want" '
+        function considered(name) {
+            wl = tolower(w)
+            if (name == wl) return 1
+            return name ~ ("^" wl "-")
+        }
+        considered(tolower($1)) && $0 !~ /\(unavailable\)/ {
+            if (!seen) { os0 = $2; seen = 1 }
+            if ($2 != os0) next
+            v = $1
+            sub(/^[^-]*-/, "", v)
+            if (v + 0 >= best) { best = v + 0; name = $1 }
+        }
+        END { if (name != "") print name; else exit 1 }
     '
 }
 

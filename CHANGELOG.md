@@ -20,6 +20,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.3] - 2026-11-06
+
+### Fixed
+
+- Browser impersonation now resolves real targets from yt-dlp's capability
+  list: versioned names (`Chrome-133`, `Chrome-136`) are matched instead of
+  the bare client name, and the newest target of the family's primary OS is
+  picked — the ones the installed curl_cffi actually supports.  This makes
+  `--impersonate` engage on machines where it previously stayed silent, and
+  never passes a target the installed curl_cffi cannot produce (such as
+  `chrome152`).
+
 ## [2.2.2] - 2026-11-06
 
 ### Changed
