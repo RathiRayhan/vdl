@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.6] - 2026-11-06
+
+### Fixed
+
+- The clipboard fallback now queues **every** URL line instead of only the
+  first, so copying several links (one per line) and running bare `vdl`
+  downloads all of them.
+
 ## [2.2.5] - 2026-11-06
 
 ### Changed

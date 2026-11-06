@@ -140,7 +140,7 @@ if [[ ${0##*/} == curl ]]; then
     exit 0
 fi
 if [[ ${0##*/} == wl-paste ]]; then
-    printf 'https://example.com/from-clipboard\n'
+    printf '%s' "${FAKE_CLIP:-https://example.com/from-clipboard}"
 fi
 exit 0
 STUB
@@ -486,6 +486,19 @@ if [[ $rc -eq 0 ]] && arg_is 'https://example.com/from-clipboard'; then
     ok
 else
     bad "should read a URL from the clipboard"
+fi
+
+export WAYLAND_DISPLAY=wayland-0
+export FAKE_CLIP=$'https://example.com/one\nhttps://example.com/two\nnot a url\n'
+run -n
+rc=$?
+unset WAYLAND_DISPLAY FAKE_CLIP
+if [[ $rc -eq 0 ]] && arg_is 'https://example.com/one' \
+    && arg_is 'https://example.com/two' && ! arg_has 'not a url' \
+    && grep -q 'Auto-grabbed 2 URL(s)' "$err"; then
+    ok
+else
+    bad "a multi-line clipboard should queue every URL line"
 fi
 
 # --- validation ------------------------------------------------------------
