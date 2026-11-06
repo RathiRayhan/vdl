@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.10] - 2026-11-06
+
+### Fixed
+
+- Made the browser-UA smoke test deterministic: the probe-launch assertion
+  raced the probe's process kill and could fail spuriously on fast machines.
+
 ## [2.2.9] - 2026-11-06
 
 ### Added

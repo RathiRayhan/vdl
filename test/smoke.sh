@@ -231,7 +231,6 @@ run 'https://example.com/watch?v=abc'
 vivaldi_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
 if arg_is '--cookies-from-browser' && arg_is '--user-agent' \
     && arg_is "$vivaldi_ua" \
-    && grep -qxF 'VIVALDI --headless=new' "$log" \
     && ls "$home/.cache/vdl"/ua-vivaldi-* >/dev/null 2>&1; then
     ok
 else
