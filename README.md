@@ -616,7 +616,7 @@ config is still ignored.
 | URL type | Engine |
 |---|---|
 | `magnet:`, `.torrent` | aria2c |
-| `.zip`, `.iso`, `.pdf`, `.apk`, `.deb`, `.tar.gz`, images, ... | aria2c |
+| `.zip`, `.iso`, `.pdf`, `.apk`, `.deb`, `.tar.gz`, `.dat`, `.test`, images, ... | aria2c |
 | Plain `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.flv` | aria2c in video mode |
 | HLS/DASH (`.m3u8`, `.mpd`) | yt-dlp native |
 | Pages, playlists, streams, everything else | yt-dlp + aria2c where possible |

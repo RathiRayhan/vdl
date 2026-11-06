@@ -69,7 +69,7 @@ the repo and from any install prefix.
 | URL | Engine |
 |-----|--------|
 | `magnet:*`, `.torrent` | direct (aria2c) |
-| `.zip .rar .7z .iso .exe .msi .dmg .pkg .deb .rpm .appimage .flatpak .tar .tgz .tbz2 .tbz .txz .tlz .gz .xz .zst .bz2 .pdf .epub .apk .bin .img .jpg .jpeg .png .webp .gif` | direct |
+| `.zip .rar .7z .iso .exe .msi .dmg .pkg .deb .rpm .appimage .flatpak .tar .tgz .tbz2 .tbz .txz .tlz .gz .xz .zst .bz2 .pdf .epub .apk .bin .img .dat .test .jpg .jpeg .png .webp .gif` | direct |
 | plain video `.mp4 .mkv .webm .avi .mov .flv` (video mode only) | direct |
 | everything else | media (yt-dlp) |
 
