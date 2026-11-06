@@ -28,7 +28,7 @@
 
 set -u -o pipefail
 
-readonly VDL_VERSION="2.2.3"
+readonly VDL_VERSION="2.2.4"
 
 # Resolve the script's real location first, so a symlinked vdl on PATH can
 # still find its libraries.
@@ -48,6 +48,7 @@ done
 parse_args "$@"
 resolve_settings
 collect_urls
+match_browser_ua
 setup_paths
 
 # 5-6. Classify, scan for images, resolve names, build yt-dlp defaults.
@@ -70,6 +71,7 @@ build_header
 print_plan
 
 rc=0
+cf_challenge=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
 img_ok=0 img_fail=0
 aria_attempted=0
@@ -93,5 +95,8 @@ cleanup_tmp
 dedupe_saved
 archive_run
 print_summary
+if (( cf_challenge )); then
+    note "A 403 challenge was detected — if the site uses Cloudflare, open the page in your browser once to solve it, then rerun: vdl reuses the browser's session cookies."
+fi
 
 exit "$rc"

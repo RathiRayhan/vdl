@@ -25,7 +25,7 @@ export NO_COLOR=1
 unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip vivaldi; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -69,6 +69,19 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
     fi
     exit 0
 fi
+if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_FAIL:-} == cloudflare ]]; then
+    printf 'ERROR: [generic] Got HTTP Error 403 caused by Cloudflare anti-bot challenge\n' >&2
+    exit 1
+fi
+if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_FAIL:-} == forbidden ]]; then
+    printf 'ERROR: [generic] Unable to download webpage: HTTP Error 403: Forbidden\n' >&2
+    exit 1
+fi
+if [[ ${0##*/} == vivaldi ]]; then
+    # UA probe target: launched headless in the background and polled via
+    # curl /json/version, then killed.  Stay silent.
+    exit 0
+fi
 printf 'CALL %s\n' "${0##*/}" >> "$FAKE_LOG"
 for a in "$@"; do
     printf 'ARG %s\n' "$a" >> "$FAKE_LOG"
@@ -105,6 +118,10 @@ if [[ ${0##*/} == zip ]]; then
     exit 0
 fi
 if [[ ${0##*/} == curl ]]; then
+    if [[ " $* " == *'/json/version'* ]]; then
+        printf '{\n   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36"\n}\n'
+        exit 0
+    fi
     outfile=''
     prev=''
     for a in "$@"; do
@@ -204,6 +221,45 @@ if [[ $rc -eq 0 ]] && arg_is '--impersonate' && arg_is 'Chrome-136' \
     ok
 else
     bad "auto impersonation should pick the newest native versioned target"
+fi
+
+# --- browser UA matching -----------------------------------------------------
+mkdir -p "$home/.config/vivaldi"
+run 'https://example.com/watch?v=abc'
+vivaldi_ua='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
+if arg_is '--cookies-from-browser' && arg_is '--user-agent' \
+    && arg_is "$vivaldi_ua"; then
+    ok
+else
+    bad "browser cookies should reuse the browser's exact User-Agent"
+fi
+
+run --user-agent 'MyBot/1.0' 'https://example.com/watch?v=abc'
+if arg_is '--user-agent' && arg_is 'MyBot/1.0' && ! arg_has 'Chrome/152.0.0.0'; then
+    ok
+else
+    bad "an explicit --user-agent should override the browser UA"
+fi
+
+# --- Cloudflare challenge hint -----------------------------------------------
+export FAKE_YTDLP_FAIL=cloudflare
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_FAIL
+if [[ $rc -ne 0 ]] && grep -qi 'cloudflare' "$err" && grep -q 'open the page' "$err"; then
+    ok
+else
+    bad "a Cloudflare challenge should produce the browser-session hint"
+fi
+
+export FAKE_YTDLP_FAIL=forbidden
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_FAIL
+if [[ $rc -ne 0 ]] && grep -q 'open the page' "$err"; then
+    ok
+else
+    bad "a plain 403 Forbidden should also produce the browser-session hint"
 fi
 
 # --- quality aliases -------------------------------------------------------

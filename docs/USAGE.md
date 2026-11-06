@@ -198,6 +198,13 @@ The browser is auto-detected when `-b` is not given. Supported browsers:
 Cookies apply to yt-dlp requests. Direct aria2c downloads do not receive
 browser cookies; use `--no-aria` for cookie-protected direct links.
 
+When cookies come from a browser, vdl also mirrors that browser's
+User-Agent (probed from the installed binary). Cloudflare's clearance
+cookie is bound to the User-Agent that solved its challenge, so the match
+keeps the cookies valid. An explicit `--user-agent` always wins. A run
+that fails with a 403 suggests opening the page in the browser once and
+rerunning, so the freshly solved cookies can be reused.
+
 ### TLS impersonation
 
 ```sh
@@ -205,9 +212,10 @@ vdl --no-impersonate "https://example.com/video"   # disable
 VDL_IMPERSONATE=chrome vdl "https://example.com"   # force a target
 ```
 
-By default vdl probes `yt-dlp --list-impersonate-targets` and uses the first
-supported target (`chrome`, `firefox`, or `safari`). If none is available it
-continues without impersonation.
+By default vdl probes `yt-dlp --list-impersonate-targets` and uses the
+newest target of the first supported family (`chrome`, `firefox`, or
+`safari`) that the installed curl_cffi can actually produce. If none is
+available it continues without impersonation.
 
 ### Headers and proxy
 
