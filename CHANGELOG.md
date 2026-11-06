@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Keystore-encrypted.
 - `VDL_WAKELOCK` to disable the automatic Termux wake lock.
 
+## [2.2.19] - 2026-11-06
+
+### Fixed
+
+- `.dat` and `.test` URLs (common public speed-test files) are now
+  classified as direct downloads instead of pages.
+
 ## [2.2.18] - 2026-11-06
 
 ### Changed

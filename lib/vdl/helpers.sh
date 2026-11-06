@@ -458,7 +458,7 @@ url_is_direct() {
     path=${path%%#*}
     [[ $path == magnet:* ]] && return 0
     [[ $path =~ \.torrent$ ]] && return 0
-    [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|tgz|tbz2|tbz|txz|tlz|gz|xz|zst|bz2|pdf|epub|apk|bin|img|jpe?g|png|webp|gif)$ ]] && return 0
+    [[ $path =~ \.(zip|rar|7z|iso|exe|msi|dmg|pkg|deb|rpm|appimage|flatpak|tar|tgz|tbz2|tbz|txz|tlz|gz|xz|zst|bz2|pdf|epub|apk|bin|img|dat|test|jpe?g|png|webp|gif)$ ]] && return 0
     (( ! audio )) && [[ $path =~ \.(mp4|mkv|webm|avi|mov|flv)$ ]] && return 0
     return 1
 }
