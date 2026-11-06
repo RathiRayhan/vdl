@@ -418,7 +418,7 @@ sanitize_title() {
 # are comments.  Environment variables and CLI flags take precedence, so this
 # function only sets defaults that haven't already been provided.
 read_vdl_config() {
-    local conf="${VDL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/vdl/config}"
+    local conf="${VDL_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/vdl}/config"
     [[ -f $conf ]] || return 0
 
     local key val
