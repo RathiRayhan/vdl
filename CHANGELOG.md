@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.15] - 2026-11-06
+
+### Fixed
+
+- CI installs yt-dlp and the static ffmpeg into a fixed-path venv:
+  pip's `--user` installs are rooted at `HOME`, and the integration
+  suite's isolated test `HOME` hid the `yt_dlp` module, breaking every
+  media download on the runner.
+
 ## [2.2.14] - 2026-11-06
 
 ### Changed
