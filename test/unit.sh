@@ -90,6 +90,8 @@ assert_direct "zip direct"    'https://h/f.zip'      0
 assert_direct "jpg direct"    'https://h/f.jpg'      0
 assert_direct "torrent direct" 'https://h/f.torrent' 0
 assert_direct "magnet direct" 'magnet:?xt=urn:btih:abc' 0
+assert_direct "dat direct"    'https://h/1Gb.dat' 0
+assert_direct "test direct"   'https://h/speed.test' 0
 
 audio=0
 assert_direct "mp4 direct in video mode" 'https://h/f.mp4' 0
