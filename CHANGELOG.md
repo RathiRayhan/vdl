@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.14] - 2026-11-06
+
+### Changed
+
+- CI posts a public commit comment with the failing log whenever the
+  integration job fails, so failures can be diagnosed without admin log
+  access.  The integration suite can keep its temp directory for that
+  purpose via `VDL_INT_KEEP=1`.
+
 ## [2.2.13] - 2026-11-06
 
 ### Fixed

@@ -10,7 +10,7 @@ set -u
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'kill ${srv:-0} 2>/dev/null || true; rm -rf "$tmp"' EXIT
+trap 'kill ${srv:-0} 2>/dev/null || true; [[ -n ${VDL_INT_KEEP:-} ]] || rm -rf "$tmp"' EXIT
 
 pass=0
 fail=0

@@ -11,6 +11,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# The integration job posts a debug comment on failure.
+permissions:
+  contents: write
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -72,4 +76,33 @@ jobs:
       - name: Integration tests
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          bash test/integration.sh
+          VDL_INT_KEEP=1 bash test/integration.sh > /tmp/int-out.log 2>&1 || {
+            rc=$?
+            cat /tmp/int-out.log
+            exit $rc
+          }
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo 'FAIL lines:'
+            grep -a '^FAIL' /tmp/int-out.log | head -20 || true
+            echo
+            echo 'last vdl log:'
+            LOG=$(ls -td /tmp/tmp.* 2>/dev/null | head -1)/last.log
+            tail -n 40 "$LOG" 2>/dev/null || true
+          } > /tmp/int-report.txt
+          python3 - "${{ github.sha }}" <<'PY'
+          import json, os, sys, urllib.request
+          body = open("/tmp/int-report.txt").read()[-6000:]
+          req = urllib.request.Request(
+              "https://api.github.com/repos/RathiRayhan/vdl/commits/" + sys.argv[1] + "/comments",
+              data=json.dumps({"body": "CI integration failure:\n\n```\n" + body + "\n```"}).encode(),
+              headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                       "Accept": "application/vnd.github+json",
+                       "Content-Type": "application/json"})
+          urllib.request.urlopen(req)
+          PY
