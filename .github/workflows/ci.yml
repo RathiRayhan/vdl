@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main, termux]
+    tags: ['v*']
   pull_request:
     branches: [main, termux]
 
@@ -23,6 +24,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Version
+        run: |
+          version=$(./bin/vdl --version | awk '{print $2}')
+          changelog=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -1)
+          echo "vdl version: $version"
+          echo "changelog:   $changelog"
+          if [[ $version != "$changelog" ]]; then
+            echo "::error::VDL_VERSION ($version) does not match the newest CHANGELOG entry ($changelog)"
+            exit 1
+          fi
+          if [[ ${GITHUB_REF_TYPE:-} == tag && ${GITHUB_REF_NAME:-} != "v$version" ]]; then
+            echo "::error::tag ${GITHUB_REF_NAME:-} does not match v$version"
+            exit 1
+          fi
 
       - name: Install shellcheck
         run: |
