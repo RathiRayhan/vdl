@@ -1,6 +1,7 @@
 # vdl
 
 [![CI](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml/badge.svg)](https://github.com/RathiRayhan/vdl/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/RathiRayhan/vdl?label=release)](https://github.com/RathiRayhan/vdl/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-3DDC84)](https://www.linux.org/)
 
@@ -147,6 +148,16 @@ Optional, for TLS impersonation:
 ```sh
 pip install -U curl-cffi
 ```
+
+Optional, for gallery and file hosts:
+
+```sh
+pipx install gallery-dl
+```
+
+`--gallery` and known gallery hosts use `gallery-dl` when it is installed.
+Without it, those URLs stay on yt-dlp and `--gallery` prints an install
+hint.
 
 ### 2. Install vdl
 
