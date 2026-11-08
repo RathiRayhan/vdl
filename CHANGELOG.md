@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-09
+
+### Added
+
+- Optional `gallery-dl` support for gallery and file hosts, with a
+  `--gallery` flag, `VDL_GALLERY=1` / `GALLERY=1` defaults, automatic
+  routing for known hosts, and a `gallery-dl` fallback for yt-dlp
+  `Unsupported URL` failures. Includes docs, completions, man page, and
+  tests.
+
 ## [2.2.20] - 2026-11-06
 
 ### Added
