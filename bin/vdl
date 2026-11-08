@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # globals declared/written here are used by lib/vdl/*.sh
-# vdl - versatile downloader for Linux (yt-dlp + aria2c)
+# vdl - versatile downloader for Linux (yt-dlp + aria2c + gallery-dl)
 #
 # Requires: bash 4+, yt-dlp.
-# Optional: aria2c, ffmpeg, curl_cffi (browser impersonation),
-#           wl-paste / xclip / xsel (clipboard), xdg-user-dir, curl (images).
+# Optional: aria2c, ffmpeg, gallery-dl (gallery/file hosts), curl_cffi
+#           (browser impersonation), wl-paste / xclip / xsel (clipboard),
+#           xdg-user-dir, curl (images).
 #
 # Direct files (.zip, .iso, .pdf, .mp4 links, ...) go to aria2c when it is
-# available; pages, playlists and streams go to yt-dlp.  All yt-dlp defaults
-# live in lib/vdl/ytdlp.sh, so vdl does not depend on
+# available; pages, playlists and streams go to yt-dlp.  Known gallery/file
+# hosts and --gallery go to gallery-dl when it is installed.  All yt-dlp
+# defaults live in lib/vdl/ytdlp.sh, so vdl does not depend on
 # ~/.config/yt-dlp/config.
 #
 # This file is the orchestrator; the reusable pieces live in lib/vdl/:
 #   ui.sh        colors, status output, progress bar, banner/summary
 #   helpers.sh   usage, parsing/normalization, config, URL classification
 #   images.sh    embedded-image scanning and downloading
+#   gallery.sh   gallery-dl host routing, downloads, and fallback
 #   downloads.sh direct/media download engines and --dedupe
 #   args.sh      command-line parsing
 #   settings.sh  browser/quality/speed resolution
@@ -38,7 +41,7 @@ if [[ -z $vdl_lib || ! -d $vdl_lib ]]; then
     printf 'vdl: library directory not found next to the script (expected lib/vdl/)\n' >&2
     exit 1
 fi
-for _lib in ui helpers images downloads args settings collect paths classify ytdlp plan; do
+for _lib in ui helpers images gallery downloads args settings collect paths classify ytdlp plan; do
     # shellcheck source=/dev/null  # resolved at runtime
     # shellcheck disable=SC1090
     source "$vdl_lib/$_lib.sh"
@@ -54,6 +57,7 @@ setup_paths
 # 5-6. Classify, scan for images, resolve names, build yt-dlp defaults.
 declare -a direct=()
 declare -a media=()
+declare -a gallery=()
 declare -a direct_pending=()
 declare -a img_urls=()
 declare -a img_refs=()
@@ -73,19 +77,22 @@ print_plan
 rc=0
 cf_challenge=0
 direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+gallery_ok=0 gallery_fail=0
 img_ok=0 img_fail=0
 aria_attempted=0
 zip_created=''
 declare -a failed_items=()
 dedupe_mark=$(date +%s)
 
-# 8. Download: direct files, media/pages, then scan and download images.
+# 8. Download: direct files, media/pages, gallery hosts, then images.
 download_directs
 ui_run_progress
 download_pending_directs
 ui_run_progress
 download_media
 ui_run_progress
+download_gallery
+(( ${#gallery[@]} )) && ui_run_progress
 scrape_images
 download_images
 ui_run_progress

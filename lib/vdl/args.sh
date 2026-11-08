@@ -22,6 +22,7 @@ quiet=0
 dry_run=0
 dedupe=0
 images=0
+gallery_mode=0
 aria_opts=''
 max_speed=''
 limit_speed=''
@@ -164,6 +165,10 @@ parse_args() {
                 ;;
             --images)
                 images=1
+                prev_unknown_flag=0
+                ;;
+            --gallery)
+                gallery_mode=1
                 prev_unknown_flag=0
                 ;;
             --quiet)

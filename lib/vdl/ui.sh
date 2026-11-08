@@ -72,9 +72,9 @@ ui_name() {
 # "  Run  2/3 · 1 failed"
 ui_run_progress() {
     (( quiet )) && return 0
-    local done=$(( direct_ok + direct_fail + media_ok + media_fail + img_ok + img_fail ))
-    local total=$(( ${#direct[@]} + ${#media[@]} + ${#img_urls[@]} ))
-    local failed=$(( direct_fail + media_fail + img_fail ))
+    local done=$(( direct_ok + direct_fail + media_ok + media_fail + gallery_ok + gallery_fail + img_ok + img_fail ))
+    local total=$(( ${#direct[@]} + ${#media[@]} + ${#gallery[@]} + ${#img_urls[@]} ))
+    local failed=$(( direct_fail + media_fail + gallery_fail + img_fail ))
     (( total && done )) || return 0
     if (( failed )); then
         printf '  %sRun%s  %d/%d · %s%d failed%s\n' "$C_DIM" "$C_OFF" "$done" "$total" "$C_RED" "$failed" "$C_OFF"
@@ -158,17 +158,16 @@ print_banner() {
     printf '%s-----------------------------------------------%s\n' "$C_DIM" "$C_OFF"
     ui_row 'Engine' "$engine"
     ui_row 'Mode' "$mode"
-    if (( ${#img_urls[@]} )); then
-        ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media, ${#img_urls[@]} images)"
-    else
-        ui_row 'URLs' "${#urls[@]} (${#direct[@]} direct, ${#media[@]} media)"
-    fi
+    local counts="${#direct[@]} direct, ${#media[@]} media"
+    (( ${#gallery[@]} )) && counts+=", ${#gallery[@]} gallery"
+    (( ${#img_urls[@]} )) && counts+=", ${#img_urls[@]} images"
+    ui_row 'URLs' "${#urls[@]} ($counts)"
     [[ -n ${custom_name:-} ]] && ui_row 'Name' "$custom_name"
     [[ -n ${output_arg:-} ]] && ui_row 'Output' "$output_arg"
     if (( ${#batch_files[@]} )); then
         ui_row 'Batch' "${#batch_files[@]} file(s)"
     fi
-    if (( ${#media[@]} )) && [[ $browser != none ]]; then
+    if (( ${#media[@]} + ${#gallery[@]} )) && [[ $browser != none ]]; then
         ui_row 'Cookies' "$browser"
     fi
     ui_row 'Save dir' "$display_dir"
@@ -184,6 +183,9 @@ print_summary() {
     fi
     if (( ${#media[@]} )); then
         ui_row 'Media' "$media_ok OK, $media_fail Failed"
+    fi
+    if (( ${#gallery[@]} || gallery_ok || gallery_fail )); then
+        ui_row 'Gallery' "$gallery_ok OK, $gallery_fail Failed"
     fi
     if (( ${#img_urls[@]} )); then
         ui_row 'Images' "$img_ok OK, $img_fail Failed"
@@ -205,7 +207,7 @@ print_summary() {
         done
     fi
     (( quiet )) || printf '\n'
-    if (( rc == 0 && direct_fail == 0 && media_fail == 0 && img_fail == 0 )); then
+    if (( rc == 0 && direct_fail == 0 && media_fail == 0 && gallery_fail == 0 && img_fail == 0 )); then
         ui_result 0 "All downloads finished"
     else
         ui_result 1 "Some downloads failed"

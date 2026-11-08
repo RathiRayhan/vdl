@@ -337,18 +337,70 @@ download_media() {
     else
         yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
     fi
-    (( media_rc )) && rc=$media_rc
+
+    # A failed batch may contain URLs yt-dlp simply does not support.  Retry
+    # only those through gallery-dl; network/auth errors stay failures.
+    local -a retry_urls=()
+    local -A retry_rc=()
+    local cand m g_rc
+    if (( media_rc != 0 )) && have gallery-dl && (( ! gallery_mode )); then
+        local -A retry_seen=()
+        while IFS= read -r cand; do
+            [[ -n $cand ]] || continue
+            [[ -n ${retry_seen[$cand]:-} ]] && continue
+            for m in "${media[@]}"; do
+                if [[ $cand == "$m" ]]; then
+                    retry_urls+=("$cand")
+                    retry_seen[$cand]=1
+                    break
+                fi
+            done
+        done < <(gallery_unsupported_urls "$media_log")
+
+        if (( ${#retry_urls[@]} )); then
+            ui_section "Fallback Downloads via gallery-dl"
+            build_gallery_common
+            for cand in "${retry_urls[@]}"; do
+                ui_item "$cand"
+                g_rc=0
+                gallery_download_one "$cand" || g_rc=$?
+                retry_rc[$cand]=$g_rc
+                if (( g_rc )); then
+                    gallery_fail=$((gallery_fail + 1))
+                    failed_items+=("$cand|gallery-dl exit $g_rc")
+                    rc=$g_rc
+                else
+                    gallery_ok=$((gallery_ok + 1))
+                fi
+            done
+        fi
+    fi
+
     if (( media_rc == 0 )); then
         media_ok=${#media[@]}
     else
-        media_fail=${#media[@]}
         [[ -n $media_log ]] && grep -qiE 'cloudflare|403[^0-9]*forbidden' "$media_log" && cf_challenge=1
-        for u in "${media[@]}"; do
-            failed_items+=("$u|yt-dlp exit $media_rc")
-        done
+        if (( ${#retry_urls[@]} == 0 )); then
+            media_fail=${#media[@]}
+            for u in "${media[@]}"; do
+                failed_items+=("$u|yt-dlp exit $media_rc")
+            done
+            rc=$media_rc
+        else
+            for u in "${media[@]}"; do
+                [[ -n ${retry_rc[$u]+x} ]] && continue
+                media_fail=$((media_fail + 1))
+                failed_items+=("$u|yt-dlp exit $media_rc")
+            done
+            (( media_fail )) && rc=$media_rc
+        fi
     fi
     rm -f -- "$media_log"
     for u in "${media[@]}"; do
-        ui_result $media_rc "$u"
+        if [[ -n ${retry_rc[$u]+x} ]]; then
+            ui_result "${retry_rc[$u]}" "$u"
+        else
+            ui_result "$media_rc" "$u"
+        fi
     done
 }

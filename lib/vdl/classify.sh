@@ -8,14 +8,29 @@
 classify_urls() {
     direct=()
     media=()
+    gallery=()
 
+    local gallery_missing=0
     for u in "${urls[@]}"; do
         if url_is_direct "$u"; then
             direct+=("$u")
+        elif (( gallery_mode )) || url_is_gallery_host "$u"; then
+            # Known hosts go to gallery-dl only when it is installed, so the
+            # existing yt-dlp fallback still works on machines without it.
+            if have gallery-dl || (( gallery_mode )); then
+                gallery+=("$u")
+            else
+                gallery_missing=1
+                media+=("$u")
+            fi
         else
             media+=("$u")
         fi
     done
+
+    if (( gallery_missing )); then
+        note "gallery-dl not installed: gallery/file hosts will be tried with yt-dlp"
+    fi
 
     direct_via_ytdlp=0
     direct_pending=()
@@ -103,6 +118,18 @@ classify_urls() {
         fi
     fi
 
+    if (( ${#gallery[@]} )) && ! have gallery-dl; then
+        err "gallery-dl is required for --gallery or gallery/file-host URLs"
+        printf '    Install it with: pipx install gallery-dl\n' >&2
+        exit 1
+    fi
+
+    if (( audio )) && (( ${#gallery[@]} )); then
+        err "--audio cannot be combined with gallery-dl URLs"
+        printf '    gallery-dl does not convert media to MP3.\n' >&2
+        exit 2
+    fi
+
     need_ytdlp=0
     (( ${#media[@]} )) && need_ytdlp=1
     (( direct_via_ytdlp )) && need_ytdlp=1
@@ -115,5 +142,10 @@ classify_urls() {
     if (( audio )) && (( ${#media[@]} )) && ! have ffmpeg; then
         err "ffmpeg is required for audio extraction (-a)"
         exit 1
+    fi
+
+    if (( ${#gallery[@]} )) \
+        && [[ -n ${custom_name:-} || -n ${custom_direct:-} || -n ${custom_media:-} ]]; then
+        note "gallery-dl keeps its own filenames; --name/--output file naming is ignored for gallery URLs"
     fi
 }

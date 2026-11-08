@@ -8,6 +8,11 @@
 resolve_settings() {
     read_vdl_config
 
+    # --gallery wins over the environment/config default.
+    if (( ! gallery_mode )) && [[ ${VDL_GALLERY:-} == 1 || ${VDL_GALLERY:-} == yes ]]; then
+        gallery_mode=1
+    fi
+
     # Convert speed limits once, before any downloader runs.  Keeping them as
     # plain byte values avoids aria2c's rejection of "1.5M"/"1G" and the
     # different semantics of the two backends' rate options.

@@ -16,6 +16,8 @@ NO_COLOR=1
 source "$root/lib/vdl/ui.sh"
 # shellcheck source=lib/vdl/helpers.sh
 source "$root/lib/vdl/helpers.sh"
+# shellcheck source=lib/vdl/gallery.sh
+source "$root/lib/vdl/gallery.sh"
 
 ok()  { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$*" >&2; }
@@ -103,9 +105,44 @@ assert_direct "bare page is media" 'https://h/page'   1
 assert_direct "html is media"      'https://h/f.html' 1
 assert_direct "txt is media"       'https://h/f.txt'  1
 
+# --- url_is_gallery_host ----------------------------------------------------
+assert_gallery() { # label url expected(0=gallery, 1=not)
+    local label=$1 url=$2 want=$3
+    local got=1
+    url_is_gallery_host "$url" && got=0
+    if (( got == want )); then
+        ok
+    else
+        bad "$label"
+    fi
+}
+
+assert_gallery "gofile folder"    'https://gofile.io/d/abc' 0
+assert_gallery "gofile uppercase" 'https://GOFILE.IO/d/abc' 0
+assert_gallery "gofile port"      'https://gofile.io:443/d/abc' 0
+assert_gallery "gofile root"      'https://gofile.io/' 1
+assert_gallery "pixeldrain user"  'https://pixeldrain.com/u/abc' 0
+assert_gallery "pixeldrain list"  'https://pixeldrain.com/l/abc' 0
+assert_gallery "pixeldrain api"   'https://pixeldrain.com/api/file/abc' 0
+assert_gallery "pixeldrain root"  'https://pixeldrain.com/' 1
+assert_gallery "cyberfile"        'https://cyberfile.me/abc' 0
+assert_gallery "filester"         'https://filester.me/d/abc' 0
+assert_gallery "catbox album"     'https://catbox.moe/c/abc' 0
+assert_gallery "catbox file"      'https://catbox.moe/abc.jpg' 1
+assert_gallery "imgbox gallery"   'https://imgbox.com/g/abcdefghij' 0
+assert_gallery "imgbox root"      'https://imgbox.com/' 1
+assert_gallery "imagebam gallery" 'https://imagebam.com/gallery/abc' 0
+assert_gallery "imagebam view"    'https://imagebam.com/view/abc' 0
+assert_gallery "imagebam image"   'https://imagebam.com/image/abc' 1
+assert_gallery "imagepond"        'https://imagepond.net/a/abc' 0
+assert_gallery "ordinary site"    'https://example.com/watch?v=abc' 1
+assert_gallery "video site"       'https://youtube.com/watch?v=abc' 1
+assert_gallery "non-url"          'not-a-url' 1
+
 # --- ui_run_progress hides zero-progress phases ------------------------------
-direct_ok=0 direct_fail=0 media_ok=0 media_fail=0 img_ok=0 img_fail=0
-direct=() media=(u) img_urls=()
+direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+gallery_ok=0 gallery_fail=0 img_ok=0 img_fail=0
+direct=() media=(u) gallery=() img_urls=()
 quiet=0
 expect_eq "progress hides 0-done phases" "$(ui_run_progress)" ''
 media_ok=1

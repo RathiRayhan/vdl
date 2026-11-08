@@ -6,14 +6,22 @@
 # --dry-run).
 
 build_header() {
-    if (( ${#direct[@]} )) && (( ${#media[@]} )); then
+    if (( ${#direct[@]} )) && (( ${#media[@]} )) && (( ${#gallery[@]} )); then
+        engine="Hybrid (aria2c + yt-dlp + gallery-dl)"
+    elif (( ${#direct[@]} )) && (( ${#media[@]} )); then
         engine="Hybrid (aria2c + yt-dlp)"
+    elif (( ${#direct[@]} )) && (( ${#gallery[@]} )); then
+        engine="Hybrid (aria2c + gallery-dl)"
     elif (( ${#direct[@]} )); then
         if (( direct_via_ytdlp )); then
             engine="Direct (yt-dlp, native)"
         else
             engine="Direct (aria2c, 16 connections)"
         fi
+    elif (( ${#media[@]} )) && (( ${#gallery[@]} )); then
+        engine="Media (yt-dlp + gallery-dl)"
+    elif (( ${#gallery[@]} )); then
+        engine="Gallery (gallery-dl)"
     elif (( ${#media[@]} )); then
         if (( have_aria && ! no_aria )); then
             engine="Media (yt-dlp + aria2c)"
@@ -32,9 +40,11 @@ build_header() {
 
     if (( audio )); then
         mode="Audio only (MP3 320k)"
-    elif (( ${#direct[@]} )) && (( ${#media[@]} == 0 )); then
+    elif (( ${#direct[@]} )) && (( ${#media[@]} == 0 )) && (( ${#gallery[@]} == 0 )); then
         mode="Direct file download"
-    elif (( ${#media[@]} == 0 )) && (( ${#img_urls[@]} )); then
+    elif (( ${#gallery[@]} )) && (( ${#media[@]} == 0 )) && (( ${#direct[@]} == 0 )); then
+        mode="Gallery / file host download"
+    elif (( ${#media[@]} == 0 )) && (( ${#gallery[@]} == 0 )) && (( ${#img_urls[@]} )); then
         mode="Embedded images"
     else
         mode="Video (max ${quality}p, MP4 preferred)"
@@ -60,7 +70,9 @@ print_plan() {
         for u in "${urls[@]}"; do
             printf '   %s\n' "$u"
         done
-        printf '%sDirect:  %d  Media: %d\n' "" "${#direct[@]}" "${#media[@]}"
+        printf '%sDirect:  %d  Media: %d' "" "${#direct[@]}" "${#media[@]}"
+        (( ${#gallery[@]} )) && printf '  Gallery: %d' "${#gallery[@]}"
+        printf '\n'
         printf '%sImpersonate: %s\n' "" "${impersonate:-none}"
         [[ -n $ua ]] && printf '%sUser-Agent: %s\n' "" "$ua"
         printf '\n%s(dry-run — nothing downloaded)%s\n' "$C_DIM" "$C_OFF"

@@ -2,9 +2,9 @@
 
 `vdl` — Versatile Downloader for Linux — is a smart downloader. It routes
 every URL to the right engine — aria2c for direct files, yt-dlp for pages,
-playlists and streams — and layers resumable multi-connection downloads,
-browser cookies, speed limits, custom names, and embedded album images on
-top.
+playlists and streams, and optional gallery-dl for gallery/file hosts — and
+layers resumable multi-connection downloads, browser cookies, speed limits,
+custom names, and embedded album images on top.
 
 This guide covers installation, setup, every feature with examples, and
 uninstallation. See the [README](../README.md) for the project overview,
@@ -21,12 +21,14 @@ contract.
 | `yt-dlp` | pages, playlists, streams | distro package, pipx, or the standalone binary |
 | `aria2c` | fast direct-file downloads (optional) | `aria2` |
 | `ffmpeg` | `-a` audio extraction, merging | `ffmpeg` |
+| `gallery-dl` | gallery/album/file hosts (optional) | `pipx install gallery-dl` |
 | `python-curl_cffi` | browser impersonation (optional, auto-detected) | `python-curl-cffi` |
 | `curl` | embedded-image scanning (`--images`, optional) | `curl` |
 | `wl-clipboard`, `xclip`, or `xsel` | clipboard URL pickup (optional) | `wl-clipboard`, `xclip`, `xsel` |
 
 Everything optional is detected at run time: without `aria2c`, direct files
-are downloaded with yt-dlp; without `curl_cffi`, impersonation is skipped.
+are downloaded with yt-dlp; without `curl_cffi`, impersonation is skipped;
+without `gallery-dl`, known gallery hosts stay on yt-dlp.
 
 ---
 
@@ -87,6 +89,7 @@ install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 | `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers (temp files, stale aria2c partials) this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
 | `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
+| `VDL_GALLERY` | unset | `1`/`yes` to enable `--gallery` mode by default |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | directory for vdl's own config file |
 | `NO_COLOR` | unset | disable colored output |
@@ -113,6 +116,7 @@ BROWSER=firefox
 SAVE_DIR=~/Downloads/vdl
 IMPERSONATE=chrome
 IMAGES=1
+GALLERY=1
 TMP_KEEP_DAYS=7
 ```
 
@@ -238,11 +242,34 @@ These are forwarded to whichever engine handles the URL.
 | magnet links, `.torrent` files | aria2c, 16 connections |
 | plain video file (`mp4`, `mkv`, `webm`, ...) | aria2c (yt-dlp in `-a` mode) |
 | HLS/DASH (`m3u8`, `mpd`) | yt-dlp native, 8 fragments |
+| known gallery/file hosts supported by gallery-dl | gallery-dl when installed |
 | pages, playlists, everything else | yt-dlp + aria2c (10 connections) |
 
 Routing checks the last path extension, so `.tar.gz`, `.zip.gz`, `.tgz`,
 and friends are all direct. Force everything through yt-dlp with
 `--no-aria`.
+
+### Gallery and file hosts (`--gallery`)
+
+```sh
+vdl "https://example.com/gallery/123"            # auto-routed when supported
+vdl --gallery "https://example.com/gallery/456"  # force gallery-dl
+VDL_GALLERY=1 vdl "https://example.com/album/789"  # same as --gallery
+```
+
+Gallery-dl sites are now available to be downloaded: known album and file
+hosts supported by gallery-dl are routed through it automatically only when
+it is installed; otherwise they stay on yt-dlp (with a note).
+`--gallery` sends every non-direct URL through gallery-dl and exits with an
+install hint if the tool is missing; with only direct URLs it is a no-op.
+
+gallery-dl keeps its own filenames, so `--name`/`--output` file naming is
+ignored for gallery URLs (an `--output` folder or save directory still
+applies). `--gallery` cannot be combined with `--audio`, because gallery-dl
+does not convert to MP3. If a normal yt-dlp batch reports `Unsupported URL`
+for a specific link, vdl retries only that link through gallery-dl when it
+is available; network, authentication, and Cloudflare errors never trigger
+the fallback.
 
 ### Magnet links and torrents
 
@@ -489,7 +516,8 @@ rm -f ~/.config/fish/functions/vdl.fish
 | Direct files download slowly or fail with 403 | Some CDNs block plain clients; retry with `--no-aria` or `--user-agent` |
 | `Invalid speed` / `Invalid quality` / `Unknown browser` | Check the value; exit code 2 means a usage error |
 | `--images` finds nothing | Only `generic`/`html5` pages are scanned; images must be plain `<img>` tags in the page HTML |
-| A page yields `Unsupported URL` without `--images` | yt-dlp cannot handle that page; try `--images` for photo-only albums or report upstream |
+| A page yields "Unsupported URL" | Try `--images` for photo-only albums, or install `gallery-dl` so unsupported links can fall back |
+| `gallery-dl is required` | Install it with `pipx install gallery-dl`, or drop `--gallery` |
 | Interrupted run left files in `.tmp` | Re-run the same command; it resumes and moves the leftovers |
 
 For more help, see the [README](../README.md), the [SPEC](SPEC.md), or open

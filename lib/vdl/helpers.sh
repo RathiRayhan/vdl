@@ -8,7 +8,7 @@
 
 usage() {
     cat <<'EOF'
-vdl - versatile downloader for Linux (yt-dlp + aria2c)
+vdl - versatile downloader for Linux (yt-dlp + aria2c + gallery-dl)
 
 Usage:
   vdl [options] <url> | <links.txt>
@@ -28,6 +28,8 @@ Options:
       --dry-run            Show what would be done, then exit
       --dedupe             Remove duplicate files downloaded in this run
       --images             Also download images embedded in album pages
+      --gallery            Use gallery-dl for gallery/file hosts, and for
+                           every non-direct URL when given explicitly
       --quiet              Suppress banner, status and progress output
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
@@ -53,6 +55,7 @@ Environment:
   VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (temp files, aria2c partials)
   VDL_IMPERSONATE     auto | off | <target> (default: auto = chrome)
   VDL_IMAGES          1 | yes to always scan album pages for images
+  VDL_GALLERY         1 | yes to enable --gallery mode by default
   VDL_CONFIG          Extra yt-dlp config file
                       (default: ~/.config/vdl/yt-dlp.conf)
   VDL_CONFIG_DIR      Directory for vdl's own config file
@@ -76,6 +79,7 @@ Examples:
   vdl --output ~/Videos/movie.mp4 "https://example.com/video"
   vdl --zip=my-batch.zip url1 url2 url3
   vdl --images "https://example.com/album/abc123"
+  vdl --gallery "https://example.com/gallery/abc123"
   vdl magnet:?xt=urn:btih:abc123
 EOF
 }
@@ -369,6 +373,7 @@ read_vdl_config() {
             SAVE_DIR)     [[ -z ${VDL_SAVE_DIR:-} ]] && export VDL_SAVE_DIR=$val ;;
             IMPERSONATE)  [[ -z ${VDL_IMPERSONATE:-} ]] && export VDL_IMPERSONATE=$val ;;
             IMAGES)       [[ -z ${VDL_IMAGES:-} ]] && export VDL_IMAGES=$val ;;
+            GALLERY)      [[ -z ${VDL_GALLERY:-} ]] && export VDL_GALLERY=$val ;;
             TMP_KEEP_DAYS) [[ -z ${VDL_TMP_KEEP_DAYS:-} ]] && export VDL_TMP_KEEP_DAYS=$val ;;
             CONFIG)       [[ -z ${VDL_CONFIG:-} ]] && export VDL_CONFIG=$val ;;
         esac

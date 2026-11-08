@@ -20,6 +20,7 @@ _vdl() {
         '--dry-run[show what would be done]' \
         '--dedupe[remove duplicate files downloaded in this run]' \
         '--images[also download images embedded in album pages]' \
+        '--gallery[use gallery-dl for gallery/file hosts]' \
         '--quiet[suppress banner, status and progress]' \
         '--aria-opts=[extra options for aria2c]:aria2c options' \
         '--max-speed=[overall download speed limit]:rate:' \

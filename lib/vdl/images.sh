@@ -202,7 +202,7 @@ scrape_images() {
                 fi
 
                 saw=0
-                for q in "${urls[@]}" "${direct[@]}" "${media[@]}" "${img_urls[@]}"; do
+                for q in "${urls[@]}" "${direct[@]}" "${media[@]}" "${gallery[@]}" "${img_urls[@]}"; do
                     if [[ $q == "$img" ]]; then
                         saw=1
                         break

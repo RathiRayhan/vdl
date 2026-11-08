@@ -22,10 +22,10 @@ export HOME=$home
 export VDL_SAVE_DIR=$tmp/dl
 export FAKE_LOG=$log
 export NO_COLOR=1
-unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
+unset VDL_BROWSER VDL_QUALITY VDL_IMPERSONATE VDL_GALLERY VDL_CONFIG WAYLAND_DISPLAY DISPLAY 2>/dev/null || true
 unset XDG_CONFIG_HOME XDG_DATA_HOME XDG_DOWNLOAD_DIR XDG_CACHE_HOME 2>/dev/null || true
 
-for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip vivaldi; do
+for cmd in yt-dlp aria2c ffmpeg wl-paste curl zip vivaldi gallery-dl; do
     cat > "$fakebin/$cmd" <<'STUB'
 #!/usr/bin/env bash
 # Answer yt-dlp's capability probe without logging it as a download.
@@ -68,6 +68,19 @@ if [[ ${0##*/} == yt-dlp && " $* " == *" --print "* ]]; then
         printf 'https://cdn.example.com/album/video1.mp4\nhttps://cdn.example.com/album/video2.mp4\n'
     fi
     exit 0
+fi
+if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_UNSUPPORTED:-} == yes ]]; then
+    last=''
+    for a in "$@"; do
+        case $a in
+            http://*|https://*) last=$a ;;
+        esac
+    done
+    printf 'ERROR: Unsupported URL: %s\n' "$last" >&2
+    exit 1
+fi
+if [[ ${0##*/} == gallery-dl && ${FAKE_GALLERY_FAIL:-} == yes ]]; then
+    exit 1
 fi
 if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_FAIL:-} == cloudflare ]]; then
     printf 'ERROR: [generic] Got HTTP Error 403 caused by Cloudflare anti-bot challenge\n' >&2
@@ -484,6 +497,136 @@ if run -n 'https://example.com/file.torrent' && called aria2c && ! called yt-dlp
     ok
 else
     bad ".torrent URLs should route to aria2c"
+fi
+
+# --- gallery-dl routing -----------------------------------------------------
+if run --help && grep -q -- '--gallery' "$out"; then
+    ok
+else
+    bad "--help should document --gallery"
+fi
+
+run -n 'https://gofile.io/d/abc123'
+if called gallery-dl && ! called yt-dlp && ! called aria2c \
+    && arg_is '--no-colors' && arg_is '-D' && arg_is "$VDL_SAVE_DIR"; then
+    ok
+else
+    bad "known gallery hosts should route to gallery-dl without invoking yt-dlp"
+fi
+
+run -n --gallery 'https://example.com/watch?v=abc'
+if called gallery-dl && ! called yt-dlp \
+    && arg_is 'https://example.com/watch?v=abc'; then
+    ok
+else
+    bad "--gallery should send non-direct URLs to gallery-dl"
+fi
+
+export VDL_GALLERY=1
+run -n 'https://example.com/watch?v=abc'
+unset VDL_GALLERY
+if called gallery-dl && ! called yt-dlp; then
+    ok
+else
+    bad "VDL_GALLERY=1 should enable gallery mode"
+fi
+
+gconf=$tmp/gallerycfg
+mkdir -p "$gconf"
+printf 'GALLERY=1\n' > "$gconf/config"
+export VDL_CONFIG_DIR=$gconf
+run -n 'https://example.com/watch?v=abc'
+unset VDL_CONFIG_DIR
+if called gallery-dl && ! called yt-dlp; then
+    ok
+else
+    bad "GALLERY=1 in the config file should enable gallery mode"
+fi
+
+export FAKE_YTDLP_UNSUPPORTED=yes
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_UNSUPPORTED
+if [[ $rc -eq 0 ]] && called gallery-dl \
+    && arg_is 'https://example.com/watch?v=abc' \
+    && grep -q 'Fallback Downloads via gallery-dl' "$out"; then
+    ok
+else
+    bad "yt-dlp Unsupported URL failures should fall back to gallery-dl"
+fi
+
+export FAKE_YTDLP_UNSUPPORTED=yes FAKE_GALLERY_FAIL=yes
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_UNSUPPORTED FAKE_GALLERY_FAIL
+if [[ $rc -ne 0 ]] && grep -q 'Gallery' "$out" && grep -q '1 Failed' "$out"; then
+    ok
+else
+    bad "a failed gallery-dl fallback should be reported and fail the run"
+fi
+
+export FAKE_YTDLP_FAIL=forbidden
+run -n 'https://example.com/watch?v=abc'
+rc=$?
+unset FAKE_YTDLP_FAIL
+if [[ $rc -ne 0 ]] && ! called gallery-dl; then
+    ok
+else
+    bad "network/auth failures must not trigger the gallery-dl fallback"
+fi
+
+run -n --gallery --audio 'https://example.com/watch?v=abc'
+rc=$?
+if [[ $rc -eq 2 ]] && grep -q 'cannot be combined' "$err" \
+    && ! called gallery-dl; then
+    ok
+else
+    bad "--gallery with --audio should exit 2 before downloading"
+fi
+
+mv "$fakebin/gallery-dl" "$tmp/gallery-dl.bak"
+run -n 'https://gofile.io/d/abc123'
+rc=$?
+mv "$tmp/gallery-dl.bak" "$fakebin/gallery-dl"
+if [[ $rc -eq 0 ]] && ! called gallery-dl && called yt-dlp \
+    && grep -q 'gallery-dl not installed' "$err"; then
+    ok
+else
+    bad "known gallery hosts should stay on yt-dlp when gallery-dl is absent"
+fi
+
+mv "$fakebin/gallery-dl" "$tmp/gallery-dl.bak"
+run -n --gallery 'https://example.com/watch?v=abc'
+rc=$?
+mv "$tmp/gallery-dl.bak" "$fakebin/gallery-dl"
+if [[ $rc -eq 1 ]] && grep -q 'gallery-dl is required' "$err"; then
+    ok
+else
+    bad "--gallery without gallery-dl should exit 1 with an install hint"
+fi
+
+mv "$fakebin/gallery-dl" "$tmp/gallery-dl.bak"
+run -n --gallery 'https://example.com/file.iso'
+rc=$?
+mv "$tmp/gallery-dl.bak" "$fakebin/gallery-dl"
+if [[ $rc -eq 0 ]] && called aria2c && ! called gallery-dl; then
+    ok
+else
+    bad "--gallery with only direct URLs should not require gallery-dl"
+fi
+
+run -n --gallery 'https://example.com/file.iso' 'https://example.com/watch?v=abc'
+if called aria2c && called gallery-dl && ! called yt-dlp; then
+    ok
+else
+    bad "--gallery should keep direct files on aria2c and route the rest to gallery-dl"
+fi
+
+run -n --dry-run --gallery 'https://example.com/watch?v=abc'
+if grep -q 'dry-run' "$out" && ! called gallery-dl && ! called yt-dlp; then
+    ok
+else
+    bad "--dry-run --gallery should not invoke downloaders"
 fi
 
 # --- download-dir override -------------------------------------------------

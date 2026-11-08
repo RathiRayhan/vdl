@@ -13,8 +13,12 @@ downloader: routes every URL to the right engine automatically:
 - **Media** — YouTube and other supported sites, playlists, HLS, and DASH —
   go through **yt-dlp** with quality limits, MP3 extraction, metadata, and
   MP4 merging.
-- **Mixed input** is handled in one command. Direct files and media URLs are
-  split automatically and downloaded with their respective engines.
+- **Gallery / file hosts** — sites supported by **gallery-dl** can now be
+  downloaded through it when it is installed; `--gallery` forces that engine
+  for any non-direct URL.
+- **Mixed input** is handled in one command. Direct files, media URLs, and
+  gallery links are split automatically and downloaded with their respective
+  engines.
 
 `vdl` is pure Bash. There is no compiled component to build, no daemon, and
 no root requirement. Everything runs in your terminal and saves to your
@@ -79,6 +83,8 @@ one command the desktop-class pipeline:
 - **Headers and proxies** — custom Referer, User-Agent, and proxy support.
 - **Embedded images** — opt-in scanning of generic album pages with
   `--images`.
+- **Gallery hosts** — optional `gallery-dl` routing for album and file
+  hosts that yt-dlp does not support, plus `--gallery` to force it.
 - **Duplicate cleanup** — opt-in `--dedupe` keeps the oldest copy of
   byte-identical files from the same run.
 - **Zip archiving** — opt-in `--zip[=NAME.zip]` packs a run's downloads into
@@ -108,6 +114,7 @@ one command the desktop-class pipeline:
 |---|---|---|
 | aria2c | fast direct downloads, torrents | `aria2` |
 | ffmpeg | MP3 extraction, merging, metadata | `ffmpeg` |
+| gallery-dl | gallery/album/file hosts | `pipx install gallery-dl` |
 | curl | embedded-image scanning | `curl` |
 | python-curl_cffi | optional TLS impersonation | `python3-curl_cffi` |
 | wl-clipboard / xclip / xsel | clipboard URL pickup | `wl-clipboard`, `xclip`, `xsel` |
@@ -117,6 +124,8 @@ one command the desktop-class pipeline:
 - Without `aria2c`, direct files are downloaded by yt-dlp instead.
 - Without `ffmpeg`, media downloads still work but audio extraction and
   merging do not.
+- Without `gallery-dl`, known gallery hosts stay on yt-dlp (and may fail);
+  `--gallery` exits with an install hint.
 - Without `curl_cffi`, TLS impersonation is skipped.
 - Without a clipboard tool, paste a URL or use a batch file.
 
@@ -205,6 +214,9 @@ vdl --name my-archive "https://example.com/file.zip"
 
 # Preview routing and options without downloading
 vdl --dry-run "https://example.com/file.iso"
+
+# A gallery/album page supported by gallery-dl
+vdl "https://example.com/gallery/123"
 ```
 
 By default, files are saved under:
@@ -223,10 +235,31 @@ By default, files are saved under:
 | `.zip`, `.iso`, `.pdf`, `.deb`, `.tar.gz`, images, ... | aria2c |
 | Plain `.mp4`, `.mkv`, `.webm`, `.avi`, `.mov`, `.flv` | aria2c in video mode |
 | HLS/DASH (`.m3u8`, `.mpd`) | yt-dlp native |
+| Known gallery/file hosts supported by gallery-dl | gallery-dl when installed |
 | Pages, playlists, streams, everything else | yt-dlp + aria2c where possible |
 
 Routing checks the last path extension, so `.tar.gz`, `.tgz`, and friends
 are all direct. Use `--no-aria` to force all direct files through yt-dlp.
+
+### Gallery and file hosts
+
+```sh
+vdl "https://example.com/gallery/123"            # auto-routed when supported
+vdl --gallery "https://example.com/gallery/456"  # force gallery-dl
+VDL_GALLERY=1 vdl "https://example.com/album/789"  # same as --gallery
+```
+
+Gallery-dl sites are now available to be downloaded: known album and file
+hosts supported by gallery-dl are routed through it only when it is
+installed; otherwise they stay on yt-dlp. `--gallery` sends every non-direct
+URL through gallery-dl and exits with an install hint when the tool is
+missing. gallery-dl keeps its own filenames, so `--name`/`--output` file
+naming is ignored for gallery URLs (`--output` folder/save-dir still
+applies), and `--gallery` cannot be combined with `--audio`.
+
+If a normal yt-dlp batch fails with `Unsupported URL` for a specific link,
+vdl retries only that link through gallery-dl when it is available. Network,
+authentication, and Cloudflare failures never trigger the fallback.
 
 ### Custom filenames
 
@@ -404,6 +437,7 @@ Run `vdl --help` for the complete list. The most useful options:
 | `--no-aria` | Send direct files through yt-dlp |
 | `--no-impersonate` | Disable TLS impersonation |
 | `--images` | Download images embedded in album pages |
+| `--gallery` | Use gallery-dl for gallery/file hosts (and all non-direct URLs) |
 | `--dedupe` | Remove duplicate files downloaded in this run |
 | `--max-speed RATE` | Overall speed limit |
 | `--limit-speed RATE` | Per-download speed limit |
@@ -435,6 +469,7 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/vide
 | `VDL_QUALITY` | `1080` | default maximum height |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a target name |
 | `VDL_IMAGES` | unset | `1` or `yes` scans album pages for images |
+| `VDL_GALLERY` | unset | `1` or `yes` enables `--gallery` mode by default |
 | `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted leftovers (temp files and stale aria2c partials) |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | vdl config directory |
@@ -452,6 +487,7 @@ BROWSER=firefox
 SAVE_DIR=~/Downloads/vdl
 IMPERSONATE=chrome
 IMAGES=1
+GALLERY=1
 ```
 
 Command-line flags take precedence over exported environment variables,
@@ -494,6 +530,11 @@ vdl --download-dir ~/Downloads "https://example.com/video"
 
 Install yt-dlp (distro package, `pipx install yt-dlp`, or the standalone
 binary) and re-run.
+
+### `gallery-dl is required`
+
+Install it with `pipx install gallery-dl` and re-run, or drop `--gallery`.
+Without gallery-dl, known gallery hosts are still tried with yt-dlp.
 
 ### Direct files fail with 403 or an anti-bot page
 
@@ -540,8 +581,9 @@ The repository layout:
 
 ```text
 bin/vdl               command entry point and orchestration
-lib/vdl/              ui, helpers, images, and download engines, plus
-                      args, settings, collect, paths, classify, ytdlp, plan
+lib/vdl/              ui, helpers, images, gallery, and download engines,
+                      plus args, settings, collect, paths, classify, ytdlp,
+                      plan
 install.sh            installer/uninstaller
 completions/          bash, zsh, and fish completions
 man/vdl.1             man page

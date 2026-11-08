@@ -1,6 +1,6 @@
-.TH VDL 1 "2026-11-06" "vdl 2.2.8" "User Commands"
+.TH VDL 1 "2026-11-09" "vdl 2.2.20" "User Commands"
 .SH NAME
-vdl \- versatile downloader for Linux (yt-dlp + aria2c)
+vdl \- versatile downloader for Linux (yt-dlp + aria2c + gallery-dl)
 .SH SYNOPSIS
 .B vdl
 [\fIOPTIONS\fR] [\fIurl\fR | \fIlinks.txt\fR]
@@ -13,6 +13,9 @@ files) are sent to
 when it is installed for parallel segmented downloads, while pages, playlists,
 and streams are handled by
 .B yt-dlp.
+Known gallery and file hosts supported by
+.B gallery-dl
+can be downloaded when it is installed; otherwise they stay on yt-dlp.
 Either engine can be used alone with
 .BR --no-aria .
 .PP
@@ -101,6 +104,10 @@ another file downloaded in the same run (the oldest copy is kept).
 Also download images embedded in album pages (opt-in; see the user guide for
 which pages are scanned).
 .TP
+.B \-\-gallery
+Use gallery-dl for known gallery/file hosts, and for every non-direct URL.
+Requires gallery-dl and cannot be combined with \-\-audio.
+.TP
 .B \-\-quiet
 Suppress the banner, status lines, summary, and downloader progress output.
 .TP
@@ -135,6 +142,10 @@ Days to keep interrupted leftovers (default: 7).
 .B VDL_IMPERSONATE
 \fBauto\fR (first available target yt-dlp reports), \fBoff\fR, or a target name.
 .TP
+.B VDL_GALLERY
+\fB1\fR or \fByes\fR enables \fB--gallery\fR mode by default (every non-direct
+URL goes through gallery-dl).
+.TP
 .B VDL_CONFIG
 Extra yt-dlp config file (default
 .IR ~/.config/vdl/yt-dlp.conf ).
@@ -168,6 +179,8 @@ vdl -a "https://example.com/album"        # MP3 320k
 vdl -n "https://example.com/file.iso"     # direct file, no cookies
 vdl --no-aria -F "https://example.com/video"  # list formats
 vdl --dry-run "https://example.com/file.iso"   # preview routing
+vdl "https://example.com/gallery/123"      # gallery-dl host routing
+vdl --gallery "https://example.com/gallery/123"
 vdl --download-dir ~/tmp "https://example.com/file.zip"
 vdl --aria-opts "--max-connection-per-server=8" "https://example.com/file.iso"
 .fi
@@ -175,6 +188,7 @@ vdl --aria-opts "--max-connection-per-server=8" "https://example.com/file.iso"
 .SH SEE ALSO
 .BR yt-dlp (1),
 .BR aria2c (1),
+.BR gallery-dl (1),
 .BR mktemp (1)
 .SH BUGS
 Report bugs at the project's GitHub issue tracker.

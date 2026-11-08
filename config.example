@@ -5,3 +5,5 @@
 BROWSER=vivaldi
 QUALITY=1080
 SAVE_DIR=~/Downloads/vdl
+# GALLERY=1        # same as --gallery (all non-direct URLs via gallery-dl)
+# IMAGES=1         # scan generic album pages for embedded images

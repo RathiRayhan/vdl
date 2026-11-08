@@ -12,12 +12,13 @@ editing, refactoring, or asking an AI to modify the project.
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
 | `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection and root Firefox cookie staging |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
+| `lib/vdl/gallery.sh` | gallery-dl host detection, downloads, and `Unsupported URL` fallback (`url_is_gallery_host`, `download_gallery`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
 | `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
 | `lib/vdl/settings.sh` | Browser/cookie/quality/speed resolution (`resolve_settings`, `build_cookie_args`) |
 | `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, root cookie staging, `--name`/`--output` validation (`collect_urls`) |
 | `lib/vdl/paths.sh` | Save dir, temp dir, traps, Termux wake lock, `--output` repointing (`setup_paths`) |
-| `lib/vdl/classify.sh` | Direct/media split, image scan, name resolution, tool checks (`classify_urls`) |
+| `lib/vdl/classify.sh` | Direct/media/gallery split, image scan, name resolution, tool checks (`classify_urls`) |
 | `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
 | `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
@@ -48,10 +49,12 @@ the repo and from any install prefix.
 4. **Set up paths** — save dir (Termux shared storage when available), temp
    dir (`<save_dir>/.tmp`), EXIT/INT traps, optional Termux wake lock, and
    the `--output` repointing.
-5. **Classify** — `url_is_direct` implements the routing rule; `--name`/
-   `--output` are resolved; yt-dlp/ffmpeg requirements are checked.  With
-   `--images`, a light preflight probes each media page's extractor so
-   image-only pages can be dropped from the media queue early.
+5. **Classify** — `url_is_direct` implements the routing rule; known
+   gallery/file hosts (and every non-direct URL under `--gallery`) go to the
+   gallery queue; `--name`/`--output` are resolved; yt-dlp/gallery-dl/ffmpeg
+   requirements are checked.  With `--images`, a light preflight probes each
+   media page's extractor so image-only pages can be dropped from the media
+   queue early.
 6. **Build yt-dlp defaults** — `yt_common` (ignore-config, retries,
    progress template, rate limit, browser/file cookies) and impersonation
    probing.
@@ -59,8 +62,9 @@ the repo and from any install prefix.
 8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
    name without `-Z`) with yt-dlp fallback for failed files; media via a
    single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
-   **then**, with `--images`, the pages are scanned for images and the
-   photos are downloaded, so videos always finish first.
+   gallery URLs via gallery-dl; **then**, with `--images`, the pages are
+   scanned for images and the photos are downloaded, so videos always finish
+   first.
 9. **Finish** — temp cleanup, `--dedupe`, `--zip`, summary, exit.
 
 ## Routing rule (`url_is_direct`)
@@ -70,25 +74,30 @@ the repo and from any install prefix.
 | `magnet:*`, `.torrent` | direct (aria2c) |
 | `.zip .rar .7z .iso .exe .msi .dmg .pkg .deb .rpm .appimage .flatpak .tar .tgz .tbz2 .tbz .txz .tlz .gz .xz .zst .bz2 .pdf .epub .apk .bin .img .jpg .jpeg .png .webp .gif` | direct |
 | plain video `.mp4 .mkv .webm .avi .mov .flv` (video mode only) | direct |
+| known gallery/file hosts, or any non-direct URL with `--gallery` | gallery-dl |
 | everything else | media (yt-dlp) |
 
 The check uses the **last** path extension, so stacked suffixes such as
-`.tar.gz` or `.zip.gz` classify as direct.
+`.tar.gz` or `.zip.gz` classify as direct.  Known-host routing only applies
+when `gallery-dl` is installed; otherwise those URLs stay on yt-dlp with a
+note.  `--gallery` forces gallery-dl for non-direct URLs and errors when the
+tool is missing.
 
 ## Exit codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | all downloads finished (or nothing failed) |
-| 1 | runtime failure (missing yt-dlp/ffmpeg, downloads failed) |
-| 2 | usage error (bad flag value, invalid speed/quality/browser, `--name`/`--output` with multiple URLs) |
+| 1 | runtime failure (missing yt-dlp/gallery-dl/ffmpeg, downloads failed) |
+| 2 | usage error (bad flag value, invalid speed/quality/browser, `--name`/`--output` with multiple URLs, `--gallery` with `--audio`) |
 | 130 | interrupted by Ctrl+C |
 
 ## Key state (owned by bin/vdl, shared with libs)
 
-- `urls`, `direct`, `media`, `img_urls` (+ `img_refs`, `img_dirs`): URL queues.
+- `urls`, `direct`, `media`, `gallery`, `img_urls` (+ `img_refs`, `img_dirs`): URL queues.
 - `passthru`: unknown yt-dlp options in original order.
-- Counters: `direct_ok/direct_fail`, `media_ok/media_fail`, `img_ok/img_fail`, `rc`.
+- Counters: `direct_ok/direct_fail`, `media_ok/media_fail`,
+  `gallery_ok/gallery_fail`, `img_ok/img_fail`, `rc`.
 - `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`,
   `custom_direct`, `custom_media`, `out_folder_strip`.
 - `cookies_file`, `root_cookies`, `cookie_label`, `yt_cookie_args`,
@@ -139,6 +148,9 @@ stricter non-zero value when both flags are set.
   title template.
 - Embedded images keep their own names; on image-only pages `--name` is
   ignored with a note.
+- gallery-dl keeps its own filenames; `--name`/`--output` file naming is
+  ignored for gallery URLs with a note (`--output` folder/save-dir still
+  applies).
 
 ## Exact destination (`--output PATH`)
 
@@ -174,6 +186,28 @@ stricter non-zero value when both flags are set.
   exists.
 - The banner and `--dry-run` plan are printed before the scan, so they show
   only the input URLs; scanned images appear in the run and the summary.
+
+## Gallery contract (`--gallery` / `VDL_GALLERY=1`)
+
+- `url_is_gallery_host` recognizes known gallery/album/file hosts that
+  gallery-dl handles better than yt-dlp. Recognition is host-based,
+  case-insensitive, and path-scoped where the host also serves ordinary
+  pages.
+- Direct-file URLs are classified first, so a gallery host serving a `.zip`
+  stays on aria2c.  Known hosts route to gallery-dl only when it is
+  installed; otherwise they stay on yt-dlp with a note.  `--gallery` forces
+  every non-direct URL through gallery-dl and exits 1 (with an install hint)
+  when the tool is missing; with only direct URLs it is a no-op.
+- `--gallery` refuses `--audio` with exit 2; gallery-dl does not convert to
+  MP3.
+- gallery-dl runs one URL per invocation with `-D "$save_dir"` so files land
+  directly in vdl's save directory.  It inherits the browser cookies,
+  User-Agent, proxy, quiet mode, and the stricter speed limit.
+- A failed yt-dlp media batch is retried through gallery-dl only for URLs
+  reported as `Unsupported URL:` in yt-dlp's log.  Network, authentication,
+  and Cloudflare failures are never retried with a second engine.
+- Gallery results are counted separately (`gallery_ok/gallery_fail`) and
+  appear in the progress line, banner counts, summary, and final verdict.
 
 ## Dedupe contract (`--dedupe`)
 
@@ -212,8 +246,8 @@ stricter non-zero value when both flags are set.
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new
   flag or routing change needs a case here.
 - `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
-  `sanitize_title`, `url_filename`, `url_is_direct`); any new pure helper
-  needs cases here.
+  `sanitize_title`, `url_filename`, `url_is_direct`,
+  `url_is_gallery_host`); any new pure helper needs cases here.
 - `test/integration.sh` — drives the REAL yt-dlp/aria2c/ffmpeg against a
   local HTTP fixture (multi-direct, playlists, `--images` ordering,
   image-only albums, fallback, `--name`/`--output`, `--zip`, pasted blocks,
