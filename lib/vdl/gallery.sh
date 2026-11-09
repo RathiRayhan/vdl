@@ -82,7 +82,11 @@ gallery_download_one() {
         return
     fi
 
-    local mode='{"start":"@@VDL_START {}\n","success":"\r@@VDL_SUCCESS {}\n","skip":"\r@@VDL_SKIP {}\n","progress":"\r@@VDL_PROGRESS_BYTES {0} {1} ","progress-total":"\r@@VDL_PROGRESS {3} {0} {2} {1} "}'
+    # Every event starts with \r so it becomes its own parser record even
+    # when gallery-dl has just printed an informational log line.  The bar
+    # renderer throttles gallery-dl's per-chunk updates to terminal-friendly
+    # once-per-second redraws.
+    local mode='{"start":"\r@@VDL_START {}\n","success":"\r@@VDL_SUCCESS {}\n","skip":"\r@@VDL_SKIP {}\n","progress":"\r@@VDL_PROGRESS_BYTES {0} {1} ","progress-total":"\r@@VDL_PROGRESS {3} {0} {2} {1} "}'
     gallery-dl "${gallery_common[@]}" \
         -o "output.mode=$mode" -o output.shorten=false \
         -o downloader.http.progress=0.1 \

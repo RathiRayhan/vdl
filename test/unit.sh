@@ -168,16 +168,32 @@ expect_eq "yt_bar capitalizes every line" \
 # --- gallery_bar renders gallery-dl progress as a vdl bar -------------------
 gallery_render=$(
     {
-        printf '@@VDL_START /tmp/album/a.jpg\n'
-        printf '\r@@VDL_PROGRESS 0 0 10M 0 '
+        printf '[cookies][info] Loaded browser cookies\n'
+        printf '\r@@VDL_START /tmp/album/a.jpg\n'
         printf '\r@@VDL_PROGRESS 42 4.2M 10M 2.1M '
         printf '\r@@VDL_SUCCESS /tmp/album/a.jpg\n'
     } | COLUMNS=80 gallery_bar | tr '\r' '\n'
 )
-if [[ $gallery_render == *'• /tmp/album/a.jpg'* ]]; then ok; else bad "gallery_bar start line: $gallery_render"; fi
+if [[ $gallery_render == *'[cookies][info] Loaded browser cookies'* ]]; then ok; else bad "gallery_bar log line: $gallery_render"; fi
+if [[ $gallery_render == *'• a.jpg'* ]]; then ok; else bad "gallery_bar start line: $gallery_render"; fi
 if [[ $gallery_render == *'42% 4.2M/10M 2.1M/s'* ]]; then ok; else bad "gallery_bar progress line: $gallery_render"; fi
-if [[ $gallery_render == *'✓  /tmp/album/a.jpg'* ]]; then ok; else bad "gallery_bar success line: $gallery_render"; fi
+if [[ $gallery_render == *'✓  a.jpg'* ]]; then ok; else bad "gallery_bar success line: $gallery_render"; fi
 if [[ $gallery_render == *'@@VDL_'* ]]; then bad "gallery_bar leaked internal markers"; else ok; fi
+
+gallery_throttled=$(
+    {
+        printf '\r@@VDL_PROGRESS 1 1K 100K 1K '
+        printf '\r@@VDL_PROGRESS 2 2K 100K 1K '
+        printf '\r@@VDL_PROGRESS 3 3K 100K 1K '
+    } | COLUMNS=80 gallery_bar | tr '\r' '\n' | grep -c '%'
+)
+expect_eq "gallery_bar throttles same-second redraws" "$gallery_throttled" 1
+
+gallery_log_tail=$(
+    printf '\r@@VDL_PROGRESS 42 4.2M 10M 2.1M WARNING: retrying\n' \
+        | COLUMNS=80 gallery_bar | tr '\r' '\n'
+)
+if [[ $gallery_log_tail == *'WARNING: retrying'* ]]; then ok; else bad "gallery_bar swallowed progress log: $gallery_log_tail"; fi
 
 gallery_full=$(printf '\r@@VDL_PROGRESS 100 10M 10M 1M ' | COLUMNS=80 gallery_bar)
 if [[ $gallery_full == *'[########################################] 100% 10M/10M 1M/s'* ]]; then

@@ -155,63 +155,159 @@ yt_bar() {
 # writes file events to stdout and progress to stderr; both are merged into
 # this filter.  Records are \r-separated so live updates can overwrite the
 # bar in place, and start/success/skip events are tagged with @@VDL_* markers.
+# Redraws are limited to once per second (plus the final 100% update), matching
+# the calmer yt-dlp UI instead of repainting for every downloaded chunk.
 gallery_bar() {
-    local w=${COLUMNS:-80}
+    local cols=${COLUMNS:-80} w erase=''
+    w=$cols
     (( w -= 34 ))
     (( w < 10 )) && w=10
     (( w > 40 )) && w=40
+    [[ -t 1 && ${TERM:-dumb} != dumb ]] && erase=$'\033[2K'
 
-    awk -v grn="$C_GRN" -v dim="$C_DIM" -v off="$C_OFF" -v w="$w" '
-        BEGIN { RS = "\r"; ORS = ""; bar = 0 }
+    awk -v grn="$C_GRN" -v dim="$C_DIM" -v off="$C_OFF" \
+        -v erase="$erase" -v cols="$cols" -v w="$w" '
+        BEGIN { RS = "\r"; ORS = ""; bar = 0; last_draw = -1 }
+
+        function clear_line() {
+            printf "\r%s", erase
+        }
+
+        function reset_bar() {
+            bar = 0
+            last_draw = -1
+        }
+
+        function display_name(path, limit, left, right, name) {
+            sub(/\n+$/, "", path)
+            name = path
+            sub(/^.*\//, "", name)
+            if (name == "") name = path
+
+            limit = cols - 6
+            if (limit < 4) limit = 4
+            if (length(name) > limit) {
+                if (limit <= 3) {
+                    name = substr(name, 1, limit)
+                } else {
+                    left = int((limit - 3) * 2 / 3)
+                    right = limit - 3 - left
+                    name = substr(name, 1, left) "..." \
+                           substr(name, length(name) - right + 1)
+                }
+            }
+            return name
+        }
+
+        # Print any logging text that shared a record with a tagged event.
+        function print_tail(tail) {
+            if (tail == "") return
+            clear_line()
+            printf "%s", tail
+            if (tail !~ /\n$/) printf "\n"
+            reset_bar()
+        }
 
         /^@@VDL_START / {
             sub(/^@@VDL_START /, "")
-            sub(/\n$/, "")
-            printf "\r  %s•%s %s\n", dim, off, $0
-            bar = 0
+            split_at = index($0, "\n")
+            if (split_at) {
+                path = substr($0, 1, split_at - 1)
+                tail = substr($0, split_at + 1)
+            } else {
+                path = $0
+                tail = ""
+            }
+            clear_line()
+            printf "  %s•%s %s\n", dim, off, display_name(path)
+            reset_bar()
+            print_tail(tail)
+            fflush()
             next
         }
         /^@@VDL_SUCCESS / {
             sub(/^@@VDL_SUCCESS /, "")
-            sub(/\n$/, "")
-            printf "\r  %s✓%s  %s\n", grn, off, $0
-            bar = 0
+            split_at = index($0, "\n")
+            if (split_at) {
+                path = substr($0, 1, split_at - 1)
+                tail = substr($0, split_at + 1)
+            } else {
+                path = $0
+                tail = ""
+            }
+            clear_line()
+            printf "  %s✓%s  %s\n", grn, off, display_name(path)
+            reset_bar()
+            print_tail(tail)
+            fflush()
             next
         }
         /^@@VDL_SKIP / {
             sub(/^@@VDL_SKIP /, "")
-            sub(/\n$/, "")
-            printf "\r  %s#%s  %s\n", dim, off, $0
-            bar = 0
+            split_at = index($0, "\n")
+            if (split_at) {
+                path = substr($0, 1, split_at - 1)
+                tail = substr($0, split_at + 1)
+            } else {
+                path = $0
+                tail = ""
+            }
+            clear_line()
+            printf "  %s#%s  %s\n", dim, off, display_name(path)
+            reset_bar()
+            print_tail(tail)
+            fflush()
             next
         }
         /^@@VDL_PROGRESS / {
             sub(/^@@VDL_PROGRESS /, "")
+            payload = $0
             split($0, f, " ")
             pct = f[1] + 0
             if (pct < 0) pct = 0
             if (pct > 100) pct = 100
+            tail = payload
+            sub(/^[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ */, "", tail)
+
+            now = systime()
+            if (bar && pct < 100 && now <= last_draw && tail == "") next
             filled = int(pct * w / 100 + 0.5)
             hashes = dashes = ""
             for (i = 1; i <= filled; i++) hashes = hashes "#"
             for (i = filled + 1; i <= w; i++) dashes = dashes "-"
-            printf "\r%s[%s%s]%s %3d%% %s/%s %s/s", grn, hashes, dashes, off, pct, f[2], f[3], f[4]
+            clear_line()
+            printf "%s[%s%s]%s %3d%% %s/%s %s/s", grn, hashes, dashes, off, pct, f[2], f[3], f[4]
             bar = 1
+            last_draw = now
+            print_tail(tail)
+            fflush()
             next
         }
         /^@@VDL_PROGRESS_BYTES / {
             sub(/^@@VDL_PROGRESS_BYTES /, "")
+            payload = $0
             split($0, f, " ")
+            tail = payload
+            sub(/^[^ ]+ +[^ ]+ */, "", tail)
+
+            now = systime()
+            if (bar && now <= last_draw && tail == "") next
             dashes = ""
             for (i = 1; i <= w; i++) dashes = dashes "-"
-            printf "\r%s[%s]%s %s %s/s", dim, dashes, off, f[1], f[2]
+            clear_line()
+            printf "%s[%s]%s %s %s/s", dim, dashes, off, f[1], f[2]
             bar = 1
+            last_draw = now
+            print_tail(tail)
+            fflush()
             next
         }
         {
-            if (bar) printf "\r"
+            if ($0 == "") next
+            if (bar) clear_line()
             printf "%s", $0
-            bar = 0
+            reset_bar()
+            fflush()
         }
         END { if (bar) printf "\n" }
     '

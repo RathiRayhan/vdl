@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.4] - 2026-11-09
+
+### Changed
+
+- Gallery progress redraws are throttled to roughly once per second, plus
+  the final 100% update, to match the calmer yt-dlp progress display.
+- Per-file gallery status lines show the filename instead of its full path.
+
+### Fixed
+
+- Gallery status markers no longer appear literally after cookie or other
+  gallery-dl log messages.
+- File completion lines now erase the active progress line first, preventing
+  stale size/speed text such as `M/s/s` from remaining on screen.
+
 ## [2.3.3] - 2026-11-09
 
 ### Fixed
@@ -21,8 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - gallery-dl downloads now draw vdl's own `[####----]` progress bar with
   percentage, downloaded/total size, and speed, plus per-file start and
-  success lines.  The bar refreshes ten times per second instead of
-  showing only a bare percentage.
+  success lines instead of showing only a bare percentage.
 
 ## [2.3.1] - 2026-11-09
 
