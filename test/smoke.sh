@@ -79,6 +79,10 @@ if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_UNSUPPORTED:-} == yes ]]; then
     printf 'ERROR: Unsupported URL: %s\n' "$last" >&2
     exit 1
 fi
+if [[ ${0##*/} == gallery-dl && ${FAKE_GALLERY_NOISY:-} == yes ]]; then
+    printf 'GALLERY OUTPUT\n'
+    printf 'GALLERY PROGRESS\n' >&2
+fi
 if [[ ${0##*/} == gallery-dl && ${FAKE_GALLERY_FAIL:-} == yes ]]; then
     exit 1
 fi
@@ -512,6 +516,24 @@ if called gallery-dl && ! called yt-dlp && ! called aria2c \
     ok
 else
     bad "known gallery hosts should route to gallery-dl without invoking yt-dlp"
+fi
+
+export FAKE_GALLERY_NOISY=yes
+run -n --gallery 'https://example.com/watch?v=abc'
+unset FAKE_GALLERY_NOISY
+if grep -q 'GALLERY OUTPUT' "$out" && grep -q 'GALLERY PROGRESS' "$err"; then
+    ok
+else
+    bad "gallery-dl output should pass through in normal mode"
+fi
+
+export FAKE_GALLERY_NOISY=yes
+run -n --quiet --gallery 'https://example.com/watch?v=abc'
+unset FAKE_GALLERY_NOISY
+if ! grep -q 'GALLERY OUTPUT' "$out" && grep -q 'GALLERY PROGRESS' "$err"; then
+    ok
+else
+    bad "--quiet should silence gallery-dl stdout but keep stderr"
 fi
 
 run -n --gallery 'https://example.com/watch?v=abc'

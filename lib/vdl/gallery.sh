@@ -71,7 +71,14 @@ build_gallery_common() {
 gallery_download_one() {
     local u=$1
     if (( quiet )) || [[ ! -t 1 ]]; then
-        gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u"
+        if (( quiet )); then
+            # Keep stderr (errors/warnings) but silence file paths and the
+            # progress indicator.  Redirecting stdout also makes gallery-dl
+            # select its non-TTY pipe output, so no bar is drawn.
+            gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u" >/dev/null
+        else
+            gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u"
+        fi
         return
     fi
 

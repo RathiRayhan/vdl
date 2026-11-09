@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-11-09
+
+### Fixed
+
+- `--quiet` now silences gallery-dl's stdout and progress output while
+  still forwarding its errors and warnings on stderr, so the gallery bar
+  respects vdl's documented quiet mode.
+
 ## [2.3.2] - 2026-11-09
 
 ### Changed
