@@ -63,10 +63,14 @@ build_gallery_common() {
 # Run one URL through gallery-dl.  -D (not -d) keeps vdl's save-directory
 # contract: files land directly in the requested directory instead of a
 # gallery-dl category subfolder.
+#
+# Do not pipe gallery-dl through yt_bar: gallery-dl only draws its native
+# per-file progress bar when stdout is a TTY, and a pipe silently disables it
+# (bytes go unmentioned until each file finishes).  Leaving stdout/stderr
+# attached keeps start lines, live progress, and success lines visible.
 gallery_download_one() {
     local u=$1
-    gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u" 2>&1 | yt_bar
-    return "${PIPESTATUS[0]}"
+    gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u"
 }
 
 # Download the queue routed to gallery-dl.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-09
+
+### Fixed
+
+- gallery-dl downloads now show their native per-file progress bar and
+  status lines again.  vdl was piping gallery-dl through its yt-dlp
+  progress filter, which made gallery-dl believe it was writing to a
+  non-terminal and silently disabled progress until each file finished.
+
 ## [2.3.0] - 2026-11-09
 
 ### Added
