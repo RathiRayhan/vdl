@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-11-09
+
+### Changed
+
+- gallery-dl downloads now draw vdl's own `[####----]` progress bar with
+  percentage, downloaded/total size, and speed, plus per-file start and
+  success lines.  The bar refreshes ten times per second instead of
+  showing only a bare percentage.
+
 ## [2.3.1] - 2026-11-09
 
 ### Fixed

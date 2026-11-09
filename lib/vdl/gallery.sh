@@ -64,13 +64,23 @@ build_gallery_common() {
 # contract: files land directly in the requested directory instead of a
 # gallery-dl category subfolder.
 #
-# Do not pipe gallery-dl through yt_bar: gallery-dl only draws its native
-# per-file progress bar when stdout is a TTY, and a pipe silently disables it
-# (bytes go unmentioned until each file finishes).  Leaving stdout/stderr
-# attached keeps start lines, live progress, and success lines visible.
+# In an interactive terminal, force gallery-dl's custom output mode so its
+# progress updates are emitted even though stdout is piped, then render them
+# as vdl's own bar.  Without this, gallery-dl detects the pipe, switches to
+# pipe output, and disables progress entirely.
 gallery_download_one() {
     local u=$1
-    gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u"
+    if (( quiet )) || [[ ! -t 1 ]]; then
+        gallery-dl "${gallery_common[@]}" -D "$save_dir" "$u"
+        return
+    fi
+
+    local mode='{"start":"@@VDL_START {}\n","success":"\r@@VDL_SUCCESS {}\n","skip":"\r@@VDL_SKIP {}\n","progress":"\r@@VDL_PROGRESS_BYTES {0} {1} ","progress-total":"\r@@VDL_PROGRESS {3} {0} {2} {1} "}'
+    gallery-dl "${gallery_common[@]}" \
+        -o "output.mode=$mode" -o output.shorten=false \
+        -o downloader.http.progress=0.1 \
+        -D "$save_dir" "$u" 2>&1 | gallery_bar
+    return "${PIPESTATUS[0]}"
 }
 
 # Download the queue routed to gallery-dl.

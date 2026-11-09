@@ -150,6 +150,73 @@ yt_bar() {
     '
 }
 
+# Render gallery-dl's machine-readable progress stream (configured in
+# build_gallery_common) as the same style of bar used for yt-dlp.  gallery-dl
+# writes file events to stdout and progress to stderr; both are merged into
+# this filter.  Records are \r-separated so live updates can overwrite the
+# bar in place, and start/success/skip events are tagged with @@VDL_* markers.
+gallery_bar() {
+    local w=${COLUMNS:-80}
+    (( w -= 34 ))
+    (( w < 10 )) && w=10
+    (( w > 40 )) && w=40
+
+    awk -v grn="$C_GRN" -v dim="$C_DIM" -v off="$C_OFF" -v w="$w" '
+        BEGIN { RS = "\r"; ORS = ""; bar = 0 }
+
+        /^@@VDL_START / {
+            sub(/^@@VDL_START /, "")
+            sub(/\n$/, "")
+            printf "\r  %s•%s %s\n", dim, off, $0
+            bar = 0
+            next
+        }
+        /^@@VDL_SUCCESS / {
+            sub(/^@@VDL_SUCCESS /, "")
+            sub(/\n$/, "")
+            printf "\r  %s✓%s  %s\n", grn, off, $0
+            bar = 0
+            next
+        }
+        /^@@VDL_SKIP / {
+            sub(/^@@VDL_SKIP /, "")
+            sub(/\n$/, "")
+            printf "\r  %s#%s  %s\n", dim, off, $0
+            bar = 0
+            next
+        }
+        /^@@VDL_PROGRESS / {
+            sub(/^@@VDL_PROGRESS /, "")
+            split($0, f, " ")
+            pct = f[1] + 0
+            if (pct < 0) pct = 0
+            if (pct > 100) pct = 100
+            filled = int(pct * w / 100 + 0.5)
+            hashes = dashes = ""
+            for (i = 1; i <= filled; i++) hashes = hashes "#"
+            for (i = filled + 1; i <= w; i++) dashes = dashes "-"
+            printf "\r%s[%s%s]%s %3d%% %s/%s %s/s", grn, hashes, dashes, off, pct, f[2], f[3], f[4]
+            bar = 1
+            next
+        }
+        /^@@VDL_PROGRESS_BYTES / {
+            sub(/^@@VDL_PROGRESS_BYTES /, "")
+            split($0, f, " ")
+            dashes = ""
+            for (i = 1; i <= w; i++) dashes = dashes "-"
+            printf "\r%s[%s]%s %s %s/s", dim, dashes, off, f[1], f[2]
+            bar = 1
+            next
+        }
+        {
+            if (bar) printf "\r"
+            printf "%s", $0
+            bar = 0
+        }
+        END { if (bar) printf "\n" }
+    '
+}
+
 # The startup banner with engine, mode, URL counts and save directory.
 print_banner() {
     (( quiet )) && return 0

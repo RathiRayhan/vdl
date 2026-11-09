@@ -165,6 +165,34 @@ expect_eq "yt_bar capitalizes every line" \
     '[Download] x
 [Info] y'
 
+# --- gallery_bar renders gallery-dl progress as a vdl bar -------------------
+gallery_render=$(
+    {
+        printf '@@VDL_START /tmp/album/a.jpg\n'
+        printf '\r@@VDL_PROGRESS 0 0 10M 0 '
+        printf '\r@@VDL_PROGRESS 42 4.2M 10M 2.1M '
+        printf '\r@@VDL_SUCCESS /tmp/album/a.jpg\n'
+    } | COLUMNS=80 gallery_bar | tr '\r' '\n'
+)
+if [[ $gallery_render == *'• /tmp/album/a.jpg'* ]]; then ok; else bad "gallery_bar start line: $gallery_render"; fi
+if [[ $gallery_render == *'42% 4.2M/10M 2.1M/s'* ]]; then ok; else bad "gallery_bar progress line: $gallery_render"; fi
+if [[ $gallery_render == *'✓  /tmp/album/a.jpg'* ]]; then ok; else bad "gallery_bar success line: $gallery_render"; fi
+if [[ $gallery_render == *'@@VDL_'* ]]; then bad "gallery_bar leaked internal markers"; else ok; fi
+
+gallery_full=$(printf '\r@@VDL_PROGRESS 100 10M 10M 1M ' | COLUMNS=80 gallery_bar)
+if [[ $gallery_full == *'[########################################] 100% 10M/10M 1M/s'* ]]; then
+    ok
+else
+    bad "gallery_bar full bar: $gallery_full"
+fi
+
+gallery_unknown=$(printf '\r@@VDL_PROGRESS_BYTES 1.2M 300K ' | COLUMNS=80 gallery_bar)
+if [[ $gallery_unknown == *'[----------------------------------------] 1.2M 300K/s'* ]]; then
+    ok
+else
+    bad "gallery_bar unknown-size bar: $gallery_unknown"
+fi
+
 # --- impersonation target resolution -----------------------------------------
 imp_list='Chrome-133    Macos-15  curl_cffi
 Chrome-136    Macos-15  curl_cffi
