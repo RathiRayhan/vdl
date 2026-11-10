@@ -19,6 +19,7 @@ lint:
 		exit 1; \
 	}
 	shellcheck --shell=bash bin/vdl install.sh test/smoke.sh test/unit.sh \
+		test/smoke/setup.sh test/smoke/stub.sh test/smoke/cases/*.sh \
 		lib/vdl/ui.sh lib/vdl/helpers.sh lib/vdl/images.sh lib/vdl/downloads.sh \
 		lib/vdl/gallery.sh lib/vdl/args.sh lib/vdl/settings.sh lib/vdl/collect.sh lib/vdl/paths.sh \
 		lib/vdl/classify.sh lib/vdl/ytdlp.sh lib/vdl/plan.sh

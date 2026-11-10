@@ -33,7 +33,8 @@ make lint            # needs shellcheck on PATH
 | `man/vdl.1` | Man page |
 | `docs/USAGE.md` | User guide |
 | `docs/SPEC.md` | Behavior contract |
-| `test/smoke.sh` | Stub-based end-to-end CLI tests |
+| `test/smoke.sh` | Stub-based end-to-end CLI test runner |
+| `test/smoke/cases/` | Individual smoke-test case files (run in filename order) |
 | `test/unit.sh` | Unit tests for pure helpers |
 | `test/integration.sh` | End-to-end tests against the real yt-dlp/aria2c/ffmpeg on a local fixture |
 | `lib/vdl/scrape.py` | HTML image extractor used by `--images` (python3; regex fallback included) |
@@ -46,8 +47,9 @@ make lint            # needs shellcheck on PATH
 2. **Follow the contracts.** Update `docs/SPEC.md` whenever behavior, exit
    codes, routing, or shared state change.
 3. **Add tests.**
-   - New or changed CLI behavior → a case in `test/smoke.sh` (uses stub
-     binaries; no network needed).
+   - New or changed CLI behavior → a case file in `test/smoke/cases/` (uses
+     stub binaries; no network needed). Cases run in filename order, so pick
+     a descriptive number and keep related state changes together.
    - New pure function → cases in `test/unit.sh`.
 4. **Update docs.** `--help` (`lib/vdl/helpers.sh`), the man page,
    `docs/USAGE.md`, and the README when adding or changing options.
