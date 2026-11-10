@@ -51,6 +51,7 @@ done
 parse_args "$@"
 resolve_settings
 collect_urls
+# shellcheck disable=SC2154  # dry_run is set by parse_args in lib/vdl/args.sh
 (( dry_run )) || match_browser_ua
 setup_paths
 

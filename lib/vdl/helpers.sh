@@ -385,7 +385,8 @@ validate_zip_name() {
     local name=$1
     [[ -n $name ]] || return 1
     case $name in
-        */*|*\\*|*..*|.|..|-*) return 1 ;;
+        */*|*\\*|*..*|.) return 1 ;;
+        -*) return 1 ;;
     esac
     return 0
 }
