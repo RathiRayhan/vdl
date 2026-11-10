@@ -52,7 +52,7 @@ Environment:
   VDL_SAVE_DIR        Download directory (default: XDG download dir + /vdl)
   VDL_BROWSER         Default browser, overridden by -b
   VDL_QUALITY         Default max height, overridden by -q
-  VDL_TMP_KEEP_DAYS   Days to keep interrupted leftovers (temp files, aria2c partials)
+  VDL_TMP_KEEP_DAYS   Days to keep interrupted temp run directories in cache
   VDL_IMPERSONATE     auto | off | <target> (default: auto = chrome)
   VDL_IMAGES          1 | yes to always scan album pages for images
   VDL_GALLERY         1 | yes to enable --gallery mode by default
@@ -378,6 +378,16 @@ read_vdl_config() {
             CONFIG)       [[ -z ${VDL_CONFIG:-} ]] && export VDL_CONFIG=$val ;;
         esac
     done < "$conf"
+}
+
+# Reject archive names that could escape save_dir or look like options.
+validate_zip_name() {
+    local name=$1
+    [[ -n $name ]] || return 1
+    case $name in
+        */*|*\\*|*..*|.|..|-*) return 1 ;;
+    esac
+    return 0
 }
 
 # The single routing rule: does this URL look like a direct file?  Magnet

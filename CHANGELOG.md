@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Isolate temporary run directories, logs, and scraped HTML under
+  `$XDG_CACHE_HOME/vdl/runs/<id>` and stop recursively sweeping save
+  directories for `.tmp` or `*.aria2` files.
+- Make `--dry-run` side-effect free (no directory creation, cache writes,
+  browser probing, or cleanup traps).
+- Track run outputs via an explicit downloader completion manifest with a
+  pre-run save-directory snapshot so `--mtime` downloads are included and
+  pre-existing untouched files are never deleted by `--dedupe` or included in
+  `--zip`.
+- Confine `--zip=NAME` to a safe basename inside the save directory, rejecting
+  empty names, `/`, `\`, `..`, `.`, and leading `-` names with exit 2.
+- Clean incomplete `.aria2` image partials before `yt-dlp` retry and count
+  already-completed images separately from retried/failed ones.
+- Ensure nonzero exit codes whenever any download failure counter is nonzero,
+  and fix associative-array URL keys in embedded-image preflight/scanning.
+
 ## [2.3.4] - 2026-11-09
 
 ### Changed

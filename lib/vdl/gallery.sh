@@ -58,6 +58,7 @@ build_gallery_common() {
 
     # yt_speed is the stricter non-zero limit chosen by build_yt_common().
     [[ -n ${yt_speed:-} ]] && gallery_common+=( --limit-rate "$yt_speed" )
+    [[ -n ${run_manifest:-} ]] && gallery_common+=( --Print-to-file 'after:{_path}' "$run_manifest" )
 }
 
 # Run one URL through gallery-dl.  -D (not -d) keeps vdl's save-directory

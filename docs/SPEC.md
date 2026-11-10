@@ -22,7 +22,7 @@ editing, refactoring, or asking an AI to modify the project.
 | `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
 | `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
-| `test/smoke.sh` | Stub-based CLI tests (no network) |
+| `test/smoke.sh` | Stub-based CLI test runner (no network); cases live in `test/smoke/cases/` |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
 | `docs/TERMUX.md` | Detailed Termux setup, storage, cookie, and background guide |
@@ -46,9 +46,9 @@ the repo and from any install prefix.
    none were given; duplicates removed, order preserved.  On Termux,
    `--root-cookies` is staged after URL validation, so a usage error never
    prompts for root.
-4. **Set up paths** — save dir (Termux shared storage when available), temp
-   dir (`<save_dir>/.tmp`), EXIT/INT traps, optional Termux wake lock, and
-   the `--output` repointing.
+4. **Set up paths** — save dir, run-isolated temp dir
+   (`$XDG_CACHE_HOME/vdl/runs/<id>`), EXIT/INT traps (omitted in
+   `--dry-run`), and the `--output` repointing.
 5. **Classify** — `url_is_direct` implements the routing rule; known
    gallery/file hosts (and every non-direct URL under `--gallery`) go to the
    gallery queue; `--name`/`--output` are resolved; yt-dlp/gallery-dl/ffmpeg
@@ -89,8 +89,10 @@ tool is missing.
 |------|---------|
 | 0 | all downloads finished (or nothing failed) |
 | 1 | runtime failure (missing yt-dlp/gallery-dl/ffmpeg, downloads failed) |
-| 2 | usage error (bad flag value, invalid speed/quality/browser, `--name`/`--output` with multiple URLs, `--gallery` with `--audio`) |
+| 2 | usage error (bad flag value, invalid speed/quality/browser/zip name, `--name`/`--output` with multiple URLs, `--gallery` with `--audio`) |
 | 130 | interrupted by Ctrl+C |
+
+Any nonzero failure counter (`direct_fail + media_fail + gallery_fail + img_fail > 0`) guarantees a nonzero exit code, even if another engine or retry succeeded in the same run.
 
 ## Key state (owned by bin/vdl, shared with libs)
 
@@ -211,31 +213,43 @@ stricter non-zero value when both flags are set.
 
 ## Dedupe contract (`--dedupe`)
 
-- Only files created during the current run (`mtime >=` run start), excluding
-  the temp dir and `.aria2/.part/.ytdl/.temp` files.
+- Uses an explicit run output manifest (`$tmp_dir/manifest.txt`) populated
+  from downloader completion events (`aria2c --on-download-complete`,
+  `yt-dlp --print-to-file after_move:filepath`,
+  `gallery-dl --Print-to-file after:{_path}`), excluding `.aria2/.part/.ytdl/.temp`
+  files and any file whose path/inode/size/timestamps match a pre-run
+  snapshot of `save_dir`.
 - Same byte size, then identical SHA-256, then delete all but the oldest
-  copy.  Pre-existing files can never be deleted.
+  copy.  Pre-existing untouched files can never be deleted.
 
 ## Cleanup contract
 
-- `.tmp` is swept on every exit: files older than `VDL_TMP_KEEP_DAYS`
-  (default 7) are deleted, empty directories older than 1 day are removed,
-  and the directory itself is removed when empty.
-- aria2c leftovers are swept with the same window: a `.aria2` control file
-  and its partial, **both** older than the keep window, are deleted.  Active
-  downloads are safe because aria2c refreshes the control file's mtime.
-- On an aria2c failure with yt-dlp available, the partial and control file
-  are removed before the retry.  When yt-dlp is unavailable the partial is
-  **kept** so a later run can resume it, and the failure is reported.
+- `--dry-run` never creates directories, installs cleanup traps, probes
+  browsers, or touches caches.
+- Temporary files and internal scratch state (manifests, logs, page scrapes)
+  live under `$XDG_CACHE_HOME/vdl/runs/<id>` — never inside `save_dir`.
+- Clean exits remove the run directory; failed or interrupted runs remove
+  internal scratch files and preserve any in-flight temp state until older
+  than `VDL_TMP_KEEP_DAYS` (default 7), when expired run directories under
+  `$XDG_CACHE_HOME/vdl/runs/` are swept.
+- `vdl` never recursively sweeps `save_dir` for `*.aria2` files or `.tmp`
+  directories.
+- On an aria2c failure with yt-dlp available (direct or embedded images),
+  the specific URL's partial and `.aria2` control file are removed before
+  the retry; completed files without a `.aria2` sidecar are counted
+  separately.  When yt-dlp is unavailable the partial is **kept** so a
+  later run can resume it, and the failure is reported.
 
 ## Zip contract (`--zip[=NAME.zip]`)
 
-- Runs after dedupe, using the same run window (files with `mtime >=` run
-  start, temp dir and partials excluded).
-- With no name, the archive is `vdl-<YYYYMMDD-HHMMSS>.zip`; an explicit name
-  gets `.zip` appended when missing.  The archive is created in the save
-  directory, with entries relative to it (playlist folders keep their
-  structure).
+- Runs after dedupe, using the same explicit run output manifest and
+  pre-existing file protection (so `--mtime` downloads are included and
+  pre-existing untouched files are excluded).
+- With no name, the archive is `vdl-<YYYYMMDD-HHMMSS>.zip`; an explicit
+  `--zip=NAME` must be a plain basename (empty names, `/`, `\`, `..`, `.`,
+  and option-like `-*` names are rejected with exit 2).  `.zip` is appended
+  when missing, and the archive is created inside `save_dir` with entries
+  relative to it (playlist folders keep their structure).
 - Requires the `zip` command; if missing, a warning is printed and the files
   are left in place (downloads still succeed).
 - With no files downloaded in the run, a note is printed and no archive is
@@ -244,7 +258,7 @@ stricter non-zero value when both flags are set.
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new
-  flag or routing change needs a case here.
+  flag or routing change needs a case in `test/smoke/cases/`.
 - `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
   `sanitize_title`, `url_filename`, `url_is_direct`,
   `url_is_gallery_host`); any new pure helper needs cases here.

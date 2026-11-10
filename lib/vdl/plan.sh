@@ -59,9 +59,13 @@ build_header() {
 print_plan() {
     print_banner
 
-    mkdir -p "$save_dir" || exit 1
-    if (( audio )); then
-        mkdir -p "$out_dir" || exit 1
+    if (( ! dry_run )); then
+        mkdir -p "$save_dir" || exit 1
+        if (( audio )); then
+            mkdir -p "$out_dir" || exit 1
+        fi
+        save_dir_abs=$(cd -- "$save_dir" 2>/dev/null && pwd -P) || save_dir_abs=$save_dir
+        ensure_tmp_dir || exit 1
     fi
 
     # --dry-run: print the resolved plan and exit without downloading.

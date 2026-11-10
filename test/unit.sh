@@ -245,5 +245,55 @@ expect_eq "ua cache path falls back to HOME" \
     "$HOME/.cache/vdl/ua-brave-Brave-Browser-1-2-3"
 expect_fail_fn "ua cache path needs a version" vdl_ua_cache_path vivaldi ''
 
+# --- zip archive name validation ---------------------------------------------
+if validate_zip_name 'run.zip'; then ok; else bad "validate_zip_name plain"; fi
+if validate_zip_name 'my-batch'; then ok; else bad "validate_zip_name no ext"; fi
+if validate_zip_name 'a.b.zip'; then ok; else bad "validate_zip_name dot"; fi
+expect_fail_fn "zip rejects empty"      validate_zip_name ''
+expect_fail_fn "zip rejects parent"     validate_zip_name '../victim.zip'
+expect_fail_fn "zip rejects slash"      validate_zip_name 'sub/run.zip'
+expect_fail_fn "zip rejects backslash"  validate_zip_name 'sub\run.zip'
+expect_fail_fn "zip rejects dotdot"     validate_zip_name '..'
+expect_fail_fn "zip rejects single dot" validate_zip_name '.'
+expect_fail_fn "zip rejects embedded .." validate_zip_name 'a..b.zip'
+expect_fail_fn "zip rejects option"     validate_zip_name '-r'
+
+# --- download_images without yt-dlp preserves partial and sets failure -------
+# shellcheck source=lib/vdl/images.sh
+source "$root/lib/vdl/images.sh"
+utmp=$(mktemp -d)
+mkdir -p "$utmp/bin" "$utmp/dl"
+cat > "$utmp/bin/aria2c" <<'EOF'
+#!/usr/bin/env bash
+dir='' prev=''
+for a in "$@"; do
+    [[ $prev == -d ]] && dir=$a
+    prev=$a
+done
+printf 'trunc' > "$dir/p.jpg"
+: > "$dir/p.jpg.aria2"
+exit 1
+EOF
+chmod +x "$utmp/bin/aria2c"
+# shellcheck disable=SC2034,SC2329  # globals and have() override are consumed by download_images
+if (
+    PATH="$utmp/bin:$PATH"
+    have() { [[ $1 != yt-dlp ]] && command -v "$1" >/dev/null 2>&1; }
+    quiet=1 no_aria=0 rc=0 img_ok=0 img_fail=0 ua='' aria_hook='' run_manifest=''
+    save_dir=$utmp/dl tmp_dir=$utmp
+    img_urls=('https://example.com/p.jpg')
+    img_refs=('https://example.com/album')
+    img_dirs=("$utmp/dl")
+    failed_items=() yt_common=() passthru=()
+    download_images >/dev/null 2>&1
+    (( rc != 0 && img_fail == 1 && img_ok == 0 )) \
+        && [[ -f $utmp/dl/p.jpg && -f $utmp/dl/p.jpg.aria2 ]]
+); then
+    ok
+else
+    bad "download_images without yt-dlp must keep partial+.aria2 and record failure"
+fi
+rm -rf "$utmp"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 (( fail == 0 )) || exit 1

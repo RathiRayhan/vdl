@@ -59,7 +59,7 @@ preflight_images() {
         album_title=${album_title#*|}
         [[ $probe_rc == 0 ]] || album_title=''
         [[ $album_title == NA ]] && album_title=''
-        scan_title[u]=$album_title
+        scan_title["$u"]=$album_title
         images_only=0
         case $probe_out in
             *"Unsupported URL"*|*"No video formats found"*)
@@ -72,7 +72,7 @@ preflight_images() {
             media_kept+=("$u")
             continue
         fi
-        scan_do[u]=1
+        scan_do["$u"]=1
         if (( images_only )); then
             # yt-dlp has nothing to download for this page; scan it for
             # images after the media phase instead of failing on it.
@@ -100,7 +100,7 @@ scrape_images() {
     fi
 
     for u in "${scan_pages[@]}"; do
-        [[ -n ${scan_do[u]:-} ]] || continue
+        [[ -n ${scan_do["$u"]:-} ]] || continue
 
         note "Scanning page for embedded images: $u"
 
@@ -127,7 +127,11 @@ scrape_images() {
         [[ -n $referer ]] && curl_args+=( -e "$referer" )
         [[ -n $proxy ]] && curl_args+=( -x "$proxy" )
 
-        page_file=$(mktemp "${TMPDIR:-/tmp}/vdl-page.XXXXXX") || page_file=''
+        if [[ -d ${tmp_dir:-} ]]; then
+            page_file=$(mktemp "$tmp_dir/page.XXXXXX") || page_file=''
+        else
+            page_file=$(mktemp "${TMPDIR:-/tmp}/vdl-page.XXXXXX") || page_file=''
+        fi
         if [[ -n $page_file ]]; then
             curl "${curl_args[@]}" -o "$page_file" -- "$u" || true
         fi
@@ -136,7 +140,7 @@ scrape_images() {
             # Fall back to the page <title> when yt-dlp has no playlist
             # title, then sanitize it so the image folder matches the one
             # yt-dlp creates for the videos.
-            album_title=${scan_title[u]}
+            album_title=${scan_title["$u"]}
             if [[ -z $album_title ]]; then
                 album_title=$(grep -oiE '<title[^>]*>[^<]+' "$page_file" \
                     | head -1 | sed -E 's/^<title[^>]*>//')
@@ -274,6 +278,9 @@ download_images() {
                 "--user-agent=${ua:-$img_ua}"
             )
             (( quiet )) && img_aria+=( --quiet=true )
+            if [[ -n ${aria_hook:-} && -x $aria_hook ]]; then
+                img_aria+=( "--on-download-complete=$aria_hook" )
+            fi
             aria2c "${img_aria[@]}" "${batch[@]}" || img_rc=$?
         fi
 
@@ -286,22 +293,36 @@ download_images() {
         fi
 
         if (( use_aria )); then
-            # Only retry the images that are still missing; -Z downloads
+            # Only retry the images that are still incomplete; -Z downloads
             # sequentially, so some may have completed before the failure.
+            # Completed images (no .aria2 sidecar and non-empty file) are
+            # counted separately from retried/failed ones.
             declare -a retry_batch=()
             for u in "${batch[@]}"; do
                 if name=$(url_filename "$u"); then
                     dest=$dir/$name
-                    rm -f -- "${dest}.aria2"
-                    [[ -e $dest ]] && continue
+                    if [[ -e "${dest}.aria2" ]]; then
+                        if have yt-dlp; then
+                            rm -f -- "${dest}.aria2" "$dest"
+                            retry_batch+=("$u")
+                        else
+                            img_fail=$((img_fail + 1))
+                            failed_items+=("$u|aria2c failed; partial kept for resume")
+                            (( rc )) || rc=1
+                            ui_result 1 "$(ui_name "$u")"
+                        fi
+                        continue
+                    elif [[ -s "$dest" ]]; then
+                        img_ok=$((img_ok + 1))
+                        ui_result 0 "$(ui_name "$u")"
+                        continue
+                    else
+                        rm -f -- "$dest"
+                    fi
                 fi
                 retry_batch+=("$u")
             done
             if (( ${#retry_batch[@]} == 0 )); then
-                for u in "${batch[@]}"; do
-                    ui_result 0 "$(ui_name "$u")"
-                done
-                img_ok=$((img_ok + ${#batch[@]}))
                 continue
             fi
             batch=("${retry_batch[@]}")
@@ -310,6 +331,7 @@ download_images() {
 
         if ! have yt-dlp; then
             err "yt-dlp is required to download the embedded images"
+            (( rc )) || rc=1
             img_fail=$((img_fail + ${#batch[@]}))
             for u in "${batch[@]}"; do
                 failed_items+=("$u|yt-dlp not found")
@@ -321,6 +343,7 @@ download_images() {
         declare -a yt_img=( "${yt_common[@]}" --downloader "http,https:native"
             -P "home:$dir" -P "temp:$tmp_dir"
             --referer "$ref" --user-agent "${ua:-$img_ua}" )
+        [[ -n ${run_manifest:-} ]] && yt_img+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
         for u in "${batch[@]}"; do
             if name=$(url_filename "$u"); then
                 name=${name//%/%%}

@@ -30,6 +30,7 @@ custom_name=''
 output_arg=''
 zip_mode=0
 zip_name=''
+zip_name_set=0
 
 declare -a batch_files=()
 declare -a raw_args=()
@@ -228,11 +229,13 @@ parse_args() {
             --zip)
                 zip_mode=1
                 zip_name=''
+                zip_name_set=0
                 prev_unknown_flag=0
                 ;;
             --zip=*)
                 zip_mode=1
                 zip_name=${arg#*=}
+                zip_name_set=1
                 prev_unknown_flag=0
                 ;;
             --)

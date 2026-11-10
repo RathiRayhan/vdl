@@ -86,7 +86,7 @@ install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 | `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl` | exact download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max video height |
-| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted leftovers (temp files, stale aria2c partials) this long |
+| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted temp run directories in cache this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
 | `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
 | `VDL_GALLERY` | unset | `1`/`yes` to enable `--gallery` mode by default |
@@ -418,10 +418,10 @@ cleans that up after the run:
 vdl --dedupe "https://example.com/album/abc123"
 ```
 
-vdl compares the files created during that run — first by size, then by
-full content hash — and removes duplicates, always keeping the oldest copy.
-Files that existed before the run and files in `<save_dir>/.tmp` are never
-touched. Opt-in; off by default.
+vdl compares the files created during that run (tracked from downloader
+completion events) — first by size, then by full content hash — and removes
+duplicates, always keeping the oldest copy. Pre-existing files in the save
+directory are never touched. Opt-in; off by default.
 
 ### Archiving to a zip (`--zip`)
 
@@ -448,9 +448,9 @@ completed files are skipped and the interrupted one continues. Resume is
 byte-exact for both engines: aria2c restarts with a `Range` request where
 it stopped, and yt-dlp prints `Resuming download at byte N`.
 
-Leftovers are swept automatically on every exit: files in `.tmp` and stale
-aria2c partials (the `.aria2` control file *and* its partial, both older
-than `VDL_TMP_KEEP_DAYS`, default 7) are removed. If aria2c fails while
+Leftover temp directories under `$XDG_CACHE_HOME/vdl/runs/` older than
+`VDL_TMP_KEEP_DAYS` (default 7) are cleaned automatically on exit, without
+touching unrelated files in your save directory. If aria2c fails while
 yt-dlp is unavailable, the partial is kept for a later resume instead of
 being deleted.
 
@@ -518,7 +518,7 @@ rm -f ~/.config/fish/functions/vdl.fish
 | `--images` finds nothing | Only `generic`/`html5` pages are scanned; images must be plain `<img>` tags in the page HTML |
 | A page yields "Unsupported URL" | Try `--images` for photo-only albums, or install `gallery-dl` so unsupported links can fall back |
 | `gallery-dl is required` | Install it with `pipx install gallery-dl`, or drop `--gallery` |
-| Interrupted run left files in `.tmp` | Re-run the same command; it resumes and moves the leftovers |
+| Interrupted run left `.aria2` partials | Re-run the same command; `aria2c` resumes from where it stopped |
 
 For more help, see the [README](../README.md), the [SPEC](SPEC.md), or open
 an issue on GitHub.

@@ -66,7 +66,7 @@ one command the desktop-class pipeline:
 - **Smart routing** — aria2c for files and torrents, yt-dlp for pages,
   playlists, and streams; one invocation can use both.
 - **Resumable transfers** — interrupted direct files continue from where
-  they stopped; yt-dlp keeps its own partial state under `<save_dir>/.tmp`.
+  they stopped; yt-dlp keeps its own partial state under `$XDG_CACHE_HOME/vdl/runs/`.
 - **Quality control** — default 1080p cap, with `720`, `2k`, `4k`, and `8k`
   aliases.
 - **Audio extraction** — `-a` downloads the best audio and converts it to
@@ -427,7 +427,7 @@ downloading.
 ### Interrupting and resuming
 
 Press `Ctrl+C`. Completed files stay in place. An in-flight yt-dlp download
-remains under `<save_dir>/.tmp`; aria2c keeps its partial file and `.aria2`
+remains under `$XDG_CACHE_HOME/vdl/runs/`; aria2c keeps its partial file and `.aria2`
 control file in the save directory. Run the same command again to resume.
 
 ## Common options
@@ -481,7 +481,7 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/vide
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a target name |
 | `VDL_IMAGES` | unset | `1` or `yes` scans album pages for images |
 | `VDL_GALLERY` | unset | `1` or `yes` enables `--gallery` mode by default |
-| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted leftovers (temp files and stale aria2c partials) |
+| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted temp run directories in cache |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | vdl config directory |
 | `NO_COLOR` | unset | disable colored output |
@@ -600,7 +600,8 @@ completions/          bash, zsh, and fish completions
 man/vdl.1             man page
 docs/USAGE.md         full user guide
 docs/SPEC.md          behavior contract
-test/smoke.sh         stub-based CLI tests, no network required
+test/smoke.sh         stub-based CLI test runner, no network required
+test/smoke/cases/     individual smoke-test cases (run in filename order)
 test/unit.sh          pure helper tests
 ```
 

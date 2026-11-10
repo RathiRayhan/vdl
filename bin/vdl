@@ -51,7 +51,7 @@ done
 parse_args "$@"
 resolve_settings
 collect_urls
-match_browser_ua
+(( dry_run )) || match_browser_ua
 setup_paths
 
 # 5-6. Classify, scan for images, resolve names, build yt-dlp defaults.
@@ -66,6 +66,7 @@ declare -a scan_pages=()
 declare -A scan_do=()
 declare -A scan_title=()
 declare -a yt_common=()
+save_dir_abs=''
 
 classify_urls
 build_yt_common
@@ -82,9 +83,11 @@ img_ok=0 img_fail=0
 aria_attempted=0
 zip_created=''
 declare -a failed_items=()
-dedupe_mark=$(date +%s)
+declare -a run_files=()
+declare -A pre_files=()
 
-# 8. Download: direct files, media/pages, gallery hosts, then images.
+# 8. Download: snapshot existing save_dir files (when needed), then download.
+snapshot_save_dir
 download_directs
 ui_run_progress
 download_pending_directs
@@ -97,13 +100,21 @@ scrape_images
 download_images
 ui_run_progress
 
-# 9. Tidy up, dedupe, summarize.
-cleanup_tmp
+# 9. Dedupe, archive, summarize.
 dedupe_saved
 archive_run
 print_summary
 if (( cf_challenge )); then
     note "A 403 challenge was detected — if the site uses Cloudflare, open the page in your browser once to solve it, then rerun: vdl reuses the browser's session cookies."
 fi
+
+# Ensure nonzero exit when any download failed, even if rc was not set
+# by every failure path (e.g. magnet failures followed by HTTP success).
+if (( direct_fail + media_fail + gallery_fail + img_fail > 0 )); then
+    (( rc != 0 )) || rc=1
+fi
+
+trap - EXIT
+cleanup_tmp
 
 exit "$rc"

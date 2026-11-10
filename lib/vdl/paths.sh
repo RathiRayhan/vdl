@@ -40,31 +40,51 @@ setup_paths() {
     save_dir=${save_dir/#~\//$HOME/}
     # A trailing slash would make joined paths show "dir//file".
     [[ $save_dir != / ]] && save_dir=${save_dir%/}
-    tmp_dir=$save_dir/.tmp
+    # Temporary files go under a vdl-specific cache directory, keyed by a
+    # run ID so concurrent invocations do not collide.  This avoids placing
+    # a .tmp directory inside the user's save directory, where cleanup could
+    # delete unrelated files.
+    cache_base=${XDG_CACHE_HOME:-$HOME/.cache}/vdl
+    run_id="$(date +%s)-$$-${RANDOM:-0}"
+    tmp_dir=$cache_base/runs/$run_id
+    run_manifest=$tmp_dir/manifest.txt
+    aria_hook=$tmp_dir/aria-complete.sh
     tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
     [[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
+
+    ensure_tmp_dir() {
+        (( dry_run )) && return 0
+        mkdir -p "$tmp_dir" || return 1
+        : > "$run_manifest"
+        export VDL_MANIFEST=$run_manifest
+        cat > "$aria_hook" <<'EOF'
+#!/usr/bin/env bash
+[[ -n ${VDL_MANIFEST:-} && -n ${3:-} ]] || exit 0
+printf '%s\n' "$3" >> "$VDL_MANIFEST"
+EOF
+        chmod +x "$aria_hook"
+    }
+
     cleanup_tmp() {
         local keep=$tmp_keep_days
+        # Remove vdl's internal scratch files (logs, manifests, hooks).
         if [[ -d $tmp_dir ]]; then
-            find "$tmp_dir" -mindepth 1 -type f -mtime +"$keep" -delete 2>/dev/null || true
-            find "$tmp_dir" -mindepth 1 -type d -empty -mtime +0 -delete 2>/dev/null || true
-            rmdir "$tmp_dir" 2>/dev/null || true
-        fi
-
-        # aria2c leftovers: a control file and its partial, both older than
-        # the keep window, are a stale interrupted download.  In-progress
-        # downloads are safe because aria2c refreshes the control file's
-        # mtime while running.
-        local ctrl
-        while IFS= read -r -d '' ctrl; do
-            local part=${ctrl%.aria2}
-            if [[ ! -e $part ]] || find "$part" -type f -mtime +"$keep" -print -quit 2>/dev/null | grep -q .; then
-                rm -f -- "$ctrl" "$part"
+            rm -f -- "$run_manifest" "$aria_hook" \
+                "$tmp_dir"/aria.log.* "$tmp_dir"/media.log.* "$tmp_dir"/page.* \
+                2>/dev/null || true
+            if (( ${rc:-1} == 0 && ${direct_fail:-0} + ${media_fail:-0} + ${gallery_fail:-0} + ${img_fail:-0} == 0 )); then
+                rm -rf -- "$tmp_dir"
+            else
+                rmdir "$tmp_dir" 2>/dev/null || true
             fi
-        done < <(find "$save_dir" -type f -name '*.aria2' -mtime +"$keep" \
-            ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+        fi
+        # Expire old run directories under vdl's own cache tree only.
+        if [[ -d $cache_base/runs ]]; then
+            find "$cache_base/runs" -mindepth 1 -maxdepth 1 -type d \
+                -mtime +"$keep" -exec rm -rf -- {} + 2>/dev/null || true
+            rmdir "$cache_base/runs" 2>/dev/null || true
+        fi
     }
-    trap cleanup_tmp EXIT
 
     # Ctrl+C: finished items have already been moved to their final folders;
     # only the download in flight stays in the temp dir.  Tell the user how
@@ -72,11 +92,15 @@ setup_paths() {
     # shellcheck disable=SC2317,SC2329  # signal handler, invoked via trap
     on_interrupt() {
         trap - INT
+        rc=130
         printf '\n'
         warn "Interrupted — completed downloads were moved to their folders; run the same command again to resume the rest."
         exit 130
     }
-    trap on_interrupt INT
+    if (( ! dry_run )); then
+        trap cleanup_tmp EXIT
+        trap on_interrupt INT
+    fi
 
     if (( audio )); then
         out_dir=$save_dir/audio
@@ -111,7 +135,6 @@ setup_paths() {
             out_folder_strip=1
         fi
         [[ $save_dir != / ]] && save_dir=${save_dir%/}
-        tmp_dir=$save_dir/.tmp
         out_dir=$save_dir
     fi
 }

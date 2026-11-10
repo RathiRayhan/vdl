@@ -6,6 +6,46 @@
 # pending direct files via yt-dlp, media/pages via yt-dlp, and the --dedupe
 # post-step.  Sourced by bin/vdl.
 
+# Record pre-existing files in save_dir before any downloader runs so --dedupe
+# and --zip can never act on files that already existed untouched before this
+# invocation.
+snapshot_save_dir() {
+    (( dedupe || zip_mode )) || return 0
+    local root_dir=${save_dir_abs:-$save_dir}
+    [[ -d $root_dir ]] || return 0
+    local meta path
+    while IFS= read -r -d '' meta && IFS= read -r -d '' path; do
+        [[ -n $path ]] && pre_files["$path"]=$meta
+    done < <(find "$root_dir" -type f -exec stat --printf='%d:%i:%s:%y:%z\0%n\0' {} + 2>/dev/null)
+}
+
+# Collect canonical paths of files created or updated during this run from the
+# explicit downloader completion manifest, excluding partials and untouched
+# pre-existing files.
+collect_run_files() {
+    run_files=()
+    [[ -n ${run_manifest:-} && -f $run_manifest ]] || return 0
+
+    local line abs_p cur_meta
+    local -A seen_p=()
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -n $line ]] || continue
+        case ${line##*/} in
+            *.aria2|*.part|*.ytdl|*.temp) continue ;;
+        esac
+        abs_p=$(readlink -f -- "$line" 2>/dev/null || printf '%s\n' "$line")
+        [[ -f $abs_p ]] || continue
+        [[ -n ${seen_p["$abs_p"]+x} ]] && continue
+        seen_p["$abs_p"]=1
+
+        if [[ -n ${pre_files["$abs_p"]+x} ]]; then
+            cur_meta=$(stat -c '%d:%i:%s:%y:%z' -- "$abs_p" 2>/dev/null || true)
+            [[ -n $cur_meta && $cur_meta == "${pre_files["$abs_p"]}" ]] && continue
+        fi
+        run_files+=("$abs_p")
+    done < "$run_manifest"
+}
+
 # With --zip: archive the files downloaded in this run into a single zip in
 # the save directory.  Runs after dedupe so duplicates are not archived.
 archive_run() {
@@ -13,17 +53,20 @@ archive_run() {
 
     have zip || { warn "zip is not installed: skipping --zip archive"; return 0; }
 
-    local -a entries=()
-    local f
-    while IFS= read -r -d '' f; do
-        case ${f##*/} in
-            *.aria2|*.part|*.ytdl|*.temp) continue ;;
-        esac
-        entries+=("$f")
-    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
-        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+    local root_dir=${save_dir_abs:-$save_dir}
+    local base_prefix=$root_dir/
+    [[ $root_dir == / ]] && base_prefix=/
 
-    if (( ${#entries[@]} == 0 )); then
+    collect_run_files
+    local -a rel_entries=()
+    local f
+    for f in "${run_files[@]}"; do
+        if [[ $f == "$base_prefix"* ]]; then
+            rel_entries+=("${f#"$base_prefix"}")
+        fi
+    done
+
+    if (( ${#rel_entries[@]} == 0 )); then
         note "--zip: no files were downloaded in this run; nothing to archive"
         return 0
     fi
@@ -31,17 +74,22 @@ archive_run() {
     local target=$zip_name
     if [[ -z $target ]]; then
         target="vdl-$(date +%Y%m%d-%H%M%S).zip"
-    elif [[ $target != *.zip ]]; then
-        target=$target.zip
-    fi
-    if [[ $target == */* ]]; then
-        mkdir -p "$save_dir/${target%/*}" || return 0
+    else
+        if ! validate_zip_name "$target"; then
+            warn "Refusing unsafe archive name: $target"
+            return 0
+        fi
+        [[ $target != *.zip ]] && target=$target.zip
+        if ! validate_zip_name "$target"; then
+            warn "Refusing unsafe archive name: $target"
+            return 0
+        fi
     fi
 
-    rm -f -- "$save_dir/$target"
-    if ( cd "$save_dir" && zip -q -r "$target" "${entries[@]#"$save_dir"/}" ); then
+    rm -f -- "$root_dir/$target"
+    if ( cd -- "$root_dir" && zip -q -r "$target" -- "${rel_entries[@]}" ); then
         zip_created=$target
-        note "Archived ${#entries[@]} file(s) to ${target}"
+        note "Archived ${#rel_entries[@]} file(s) to ${target}"
     else
         warn "zip failed — files were left in place"
     fi
@@ -54,19 +102,20 @@ archive_run() {
 dedupe_saved() {
     (( dedupe )) || return 0
 
+    local root_dir=${save_dir_abs:-$save_dir}
+    local base_prefix=$root_dir/
+    [[ $root_dir == / ]] && base_prefix=/
+
+    collect_run_files
     local f size h dt keep keep_t
     local -A size_groups=()
     local -a files
     local -A hash_groups
 
-    while IFS= read -r -d '' f; do
-        case ${f##*/} in
-            *.aria2|*.part|*.ytdl|*.temp) continue ;;
-        esac
+    for f in "${run_files[@]}"; do
         size=$(stat -c %s -- "$f" 2>/dev/null) || continue
         size_groups[$size]+=$f$'\n'
-    done < <(find "$save_dir" -type f -newermt "@$dedupe_mark" \
-        ! -path "$tmp_dir" ! -path "$tmp_dir/*" -print0 2>/dev/null)
+    done
 
     for size in "${!size_groups[@]}"; do
         mapfile -t files <<< "${size_groups[$size]%$'\n'}"
@@ -85,12 +134,12 @@ dedupe_saved() {
                 dt=$(stat -c %Y -- "$f" 2>/dev/null || echo 0)
                 if (( dt < keep_t )); then
                     rm -f -- "$keep"
-                    note "Removed duplicate: ${keep#"$save_dir"/} (same content as ${f#"$save_dir"/})"
+                    note "Removed duplicate: ${keep#"$base_prefix"} (same content as ${f#"$base_prefix"})"
                     keep=$f
                     keep_t=$dt
                 else
                     rm -f -- "$f"
-                    note "Removed duplicate: ${f#"$save_dir"/} (same content as ${keep#"$save_dir"/})"
+                    note "Removed duplicate: ${f#"$base_prefix"} (same content as ${keep#"$base_prefix"})"
                 fi
             done
         done
@@ -133,6 +182,9 @@ download_directs() {
     if [[ -n $limit_speed_bytes ]]; then
         aria_args+=( "--max-download-limit=$limit_speed_bytes" )
     fi
+    if [[ -n ${aria_hook:-} && -x $aria_hook ]]; then
+        aria_args+=( "--on-download-complete=$aria_hook" )
+    fi
     # Parse --aria-opts as space-separated; use word splitting intentionally.
     if [[ -n $aria_opts ]]; then
         # shellcheck disable=SC2206,SC2086  # deliberate word splitting of user-provided opts
@@ -140,7 +192,11 @@ download_directs() {
     fi
 
     aria_rc=0
-    aria_log=$(mktemp) || aria_log=''
+    if [[ -d ${tmp_dir:-} ]]; then
+        aria_log=$(mktemp "$tmp_dir/aria.log.XXXXXX") || aria_log=''
+    else
+        aria_log=$(mktemp) || aria_log=''
+    fi
     if [[ -n $aria_log ]]; then
         aria2c "${aria_args[@]}" "${direct[@]}" 2>&1 | tee "$aria_log" || aria_rc=$?
     else
@@ -161,10 +217,14 @@ download_directs() {
     for u in "${direct[@]}"; do
         # yt-dlp cannot fetch magnet/torrent payloads; report those
         # failures instead of retrying the wrong thing.
-        case ${u,,} in
+        local lower_u=${u,,}
+        lower_u=${lower_u%%\?*}
+        lower_u=${lower_u%%#*}
+        case $lower_u in
             magnet:*|*.torrent)
                 direct_fail=$((direct_fail + 1))
                 failed_items+=("$u|aria2c failed")
+                (( rc )) || rc=1
                 ui_result 1 "$(ui_name "$u")"
                 continue
                 ;;
@@ -184,6 +244,7 @@ download_directs() {
                 else
                     direct_fail=$((direct_fail + 1))
                     failed_items+=("$u|aria2c failed; partial kept for resume")
+                    (( rc )) || rc=1
                     ui_result 1 "$(ui_name "$u")"
                 fi
             elif [[ ! -f $dest ]]; then
@@ -227,6 +288,7 @@ download_pending_directs() {
 
     declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
     yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
+    [[ -n ${run_manifest:-} ]] && yt_direct+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
     if [[ $browser != none ]]; then
         yt_direct+=( --cookies-from-browser "$browser" )
     fi
@@ -329,9 +391,14 @@ download_media() {
     fi
     # A custom name overrides the default template (the last -o wins).
     [[ -n ${custom_media:-} ]] && yt_media+=( -o "$custom_media" )
+    [[ -n ${run_manifest:-} ]] && yt_media+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
 
     media_rc=0
-    media_log=$(mktemp) || media_log=''
+    if [[ -d ${tmp_dir:-} ]]; then
+        media_log=$(mktemp "$tmp_dir/media.log.XXXXXX") || media_log=''
+    else
+        media_log=$(mktemp) || media_log=''
+    fi
     if [[ -n $media_log ]]; then
         yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | tee "$media_log" | yt_bar || media_rc=$?
     else

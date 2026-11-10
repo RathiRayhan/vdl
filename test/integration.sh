@@ -35,6 +35,7 @@ for f in v a b; do
     ffmpeg -loglevel error -f lavfi -i testsrc=duration=1:size=128x128:rate=10 \
         -pix_fmt yuv420p "$tmp/srv/srv/$f.mp4"
 done
+touch -d '2020-01-01 00:00:00' "$tmp/srv/srv/v.mp4"
 cat > "$tmp/srv/list.html" <<'EOF'
 <html><head><title>My List</title></head>
 <body><video src="srv/a.mp4"></video><video src="srv/b.mp4"></video></body></html>
@@ -200,17 +201,64 @@ EOF
 python3 "$root/lib/vdl/scrape.py" "$root/test/fixtures/album-thumbs.html" | sort > "$tmp/thumbs.actual"
 check "thumbs fixture output" diff -u "$tmp/thumbs.expected" "$tmp/thumbs.actual"
 
-# --- 11. stale aria2c leftovers are swept on exit ----------------------------
-mkdir -p "$DL"
+# --- 11. unrelated files in save_dir are untouched; expired cache runs swept -
+mkdir -p "$DL/.tmp" "$tmp/cache/vdl/runs/old-run"
+printf 'notes\n' > "$DL/.tmp/notes.txt"
 printf 'partial' > "$DL/stale.iso"
 : > "$DL/stale.iso.aria2"
-printf 'partial' > "$DL/fresh.iso"
-: > "$DL/fresh.iso.aria2"
-touch -d '8 days ago' "$DL/stale.iso" "$DL/stale.iso.aria2"
-run_vdl -n --no-impersonate "$B/a.iso"; rc=$?
-check "sweep rc" test $rc -eq 0
-check "stale aria2 swept" test ! -e "$DL/stale.iso" -a ! -e "$DL/stale.iso.aria2"
-check "fresh aria2 kept" test -f "$DL/fresh.iso" -a -f "$DL/fresh.iso.aria2"
+printf 'stale-cache\n' > "$tmp/cache/vdl/runs/old-run/temp.part"
+touch -d '8 days ago' "$DL/.tmp/notes.txt" "$DL/stale.iso" "$DL/stale.iso.aria2" \
+    "$tmp/cache/vdl/runs/old-run" "$tmp/cache/vdl/runs/old-run/temp.part"
+XDG_CACHE_HOME="$tmp/cache" PATH="$REAL" bash "$root/bin/vdl" -n --no-impersonate "$B/a.iso" >"$LOG" 2>&1; rc=$?
+check "safe cleanup rc" test $rc -eq 0
+check "unrelated .tmp kept" test -f "$DL/.tmp/notes.txt"
+check "unrelated aria2 kept" test -f "$DL/stale.iso" -a -f "$DL/stale.iso.aria2"
+check "expired cache run swept" test ! -e "$tmp/cache/vdl/runs/old-run"
+
+# --- 12. --dry-run creates no directories or cache files ---------------------
+rm -rf "$tmp/dry_cache" "$tmp/dry_out"
+XDG_CACHE_HOME="$tmp/dry_cache" PATH="$REAL" bash "$root/bin/vdl" -n --no-impersonate \
+    --output "$tmp/dry_out/sub/movie.iso" --dry-run "$B/a.iso" >"$LOG" 2>&1; rc=$?
+check "dry-run rc" test $rc -eq 0
+check "dry-run no dest dir" test ! -e "$tmp/dry_out"
+check "dry-run no cache dir" test ! -e "$tmp/dry_cache/vdl"
+
+# --- 13. --no-aria --mtime --zip archives file with old remote timestamp -----
+rm -rf "$DL"
+PATH="$tmp/zipbin:$REAL" bash "$root/bin/vdl" -n --no-aria --no-impersonate --mtime --zip=mtime.zip "$B/srv/v.mp4" >"$LOG" 2>&1; rc=$?
+check "mtime zip rc" test $rc -eq 0
+check "mtime zip exists" test -f "$DL/mtime.zip"
+check "mtime zip content" sh -c "python3 -m zipfile -l '$DL/mtime.zip' 2>/dev/null | grep -q 'v\\.mp4'"
+
+# --- 14. --dedupe and --zip never delete or grab pre-existing files ----------
+rm -rf "$DL"
+mkdir -p "$DL"
+cp "$tmp/srv/a.iso" "$DL/preexisting.iso"
+touch -d '2025-01-01 00:00:00' "$DL/preexisting.iso"
+cat > "$tmp/srv/a-copy.iso" < "$tmp/srv/a.iso"
+PATH="$tmp/zipbin:$REAL" bash "$root/bin/vdl" -n --dedupe --zip=deduped.zip "$B/a.iso" "$B/a-copy.iso" >"$LOG" 2>&1; rc=$?
+check "dedupe+zip rc" test $rc -eq 0
+check "preexisting kept" test -f "$DL/preexisting.iso"
+check "only one new copy kept" sh -c "test -f '$DL/a.iso' -a ! -f '$DL/a-copy.iso' || test ! -f '$DL/a.iso' -a -f '$DL/a-copy.iso'"
+check "deduped zip exists" test -f "$DL/deduped.zip"
+check "zip excludes preexisting" sh -c "! (python3 -m zipfile -l '$DL/deduped.zip' 2>/dev/null | grep -q preexisting.iso)"
+
+# --- 15. --zip rejects traversal outside save_dir ----------------------------
+printf 'victim\n' > "$tmp/victim.zip"
+PATH="$tmp/zipbin:$REAL" bash "$root/bin/vdl" -n --download-dir "$DL" --zip=../victim.zip "$B/a.iso" >"$LOG" 2>&1; rc=$?
+check "zip traversal rc=2" test $rc -eq 2
+check "victim untouched" sh -c "test \"\$(cat '$tmp/victim.zip')\" = victim"
+
+# --- 16. image partial with .aria2 is cleaned and retried via real yt-dlp ----
+rm -rf "$DL"
+mkdir -p "$DL/Photos"
+printf 'trunc' > "$DL/Photos/pic.webp"
+: > "$DL/Photos/pic.webp.aria2"
+PATH="$tmp/fakebin:$REAL" bash "$root/bin/vdl" -n --no-impersonate --images "$B/photos.html" >"$LOG" 2>&1; rc=$?
+size=$(stat -c %s "$DL/Photos/pic.webp" 2>/dev/null || printf "0")
+check "image partial retry rc" test $rc -eq 0
+check "image partial ctrl gone" test ! -e "$DL/Photos/pic.webp.aria2"
+check "image partial full size" test "$size" -eq 30000
 
 if (( fail )); then
     printf '\n--- debug: last vdl log ---\n'

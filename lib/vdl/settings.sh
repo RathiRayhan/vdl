@@ -71,4 +71,9 @@ resolve_settings() {
         err "Invalid quality: $quality_raw (try 720, 1080, 2k, 4k)"
         exit 2
     fi
+
+    if (( zip_mode && zip_name_set )) && ! validate_zip_name "$zip_name"; then
+        err "Invalid archive name: '$zip_name' (must be a plain filename without /, \\, .., or leading -)"
+        exit 2
+    fi
 }
