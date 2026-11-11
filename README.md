@@ -66,7 +66,8 @@ one command the desktop-class pipeline:
 - **Smart routing** — aria2c for files and torrents, yt-dlp for pages,
   playlists, and streams; one invocation can use both.
 - **Resumable transfers** — interrupted direct files continue from where
-  they stopped; yt-dlp keeps its own partial state under `$XDG_CACHE_HOME/vdl/runs/`.
+  they stopped; yt-dlp partials live in stable per-output directories under
+  `$XDG_CACHE_HOME/vdl/partials/` and are reused on the next run.
 - **Quality control** — default 1080p cap, with `720`, `2k`, `4k`, and `8k`
   aliases.
 - **Audio extraction** — `-a` downloads the best audio and converts it to
@@ -86,6 +87,8 @@ one command the desktop-class pipeline:
   `--images`.
 - **Gallery hosts** — optional `gallery-dl` routing for album and file
   hosts that yt-dlp does not support, plus `--gallery` to force it.
+- **Collision policy** — `--on-collision skip|rename|fail|overwrite` decides
+  what happens when a direct file or embedded image already exists.
 - **Duplicate cleanup** — opt-in `--dedupe` keeps the oldest copy of
   byte-identical files from the same run.
 - **Zip archiving** — opt-in `--zip[=NAME.zip]` packs a run's downloads into
@@ -98,6 +101,10 @@ one command the desktop-class pipeline:
   files through yt-dlp.
 - **Preview mode** — `--dry-run` shows the resolved plan without
   downloading.
+- **Machine-readable output** — `--json` and `--json-lines` report per-URL
+  engines, statuses, files, errors, and run counts for scripting.
+- **Environment doctor** — `vdl --doctor` checks tools, browser cookies,
+  config, save-directory writability, and free space.
 - **Quiet mode** — `--quiet` suppresses banners, status lines, and progress.
 
 ## Requirements
@@ -286,7 +293,9 @@ For a playlist URL, the name becomes the folder:
 vdl --name my-album "https://example.com/playlist"
 ```
 
-`--name` requires exactly one input URL.
+`--name` requires exactly one input URL and must be a plain filename:
+path separators, `.`/`..`, and a leading `-` are rejected with exit 2. Use
+`--output` for an exact path.
 
 ### Exact destination
 
@@ -343,7 +352,10 @@ vdl --zip=my-batch.zip links.txt           # explicit name
 
 Packs everything downloaded in the run into one zip in the save directory
 (playlist folders keep their structure). Runs after `--dedupe`; requires the
-`zip` command.
+`zip` command. The archive is built under a temporary name and moved into
+place only after `zip` succeeds, and a name that collides with a downloaded
+file is refused. A failed archive leaves the downloads in place but exits
+nonzero.
 
 ### Torrents and magnets
 
@@ -426,9 +438,11 @@ downloading.
 
 ### Interrupting and resuming
 
-Press `Ctrl+C`. Completed files stay in place. An in-flight yt-dlp download
-remains under `$XDG_CACHE_HOME/vdl/runs/`; aria2c keeps its partial file and `.aria2`
-control file in the save directory. Run the same command again to resume.
+Press `Ctrl+C`. Completed files stay in place. An in-flight yt-dlp partial
+remains in a stable directory under `$XDG_CACHE_HOME/vdl/partials/`;
+aria2c keeps its partial file and `.aria2` control file in the save
+directory. Run the same command again to resume. Per-run logs and manifests
+live separately under `$XDG_CACHE_HOME/vdl/runs/`.
 
 ## Common options
 
@@ -445,6 +459,10 @@ Run `vdl --help` for the complete list. The most useful options:
 | `--name NAME` | Custom filename, or playlist folder name |
 | `--output PATH` | Exact destination: file or folder for a single URL |
 | `--zip[=NAME.zip]` | Archive this run's downloads into a zip |
+| `--on-collision MODE` | Existing-file policy: `skip` (default), `rename`, `fail`, `overwrite` |
+| `--json` | Machine-readable run report on stdout |
+| `--json-lines` | One JSON object per item, then a summary |
+| `--doctor` | Check tools, config, browser, and paths |
 | `--no-aria` | Send direct files through yt-dlp |
 | `--no-impersonate` | Disable TLS impersonation |
 | `--images` | Download images embedded in album pages |

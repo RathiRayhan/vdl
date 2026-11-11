@@ -1,4 +1,4 @@
-.TH VDL 1 "2026-11-10" "vdl 2.4.0" "User Commands"
+.TH VDL 1 "2026-11-12" "vdl 2.5.0" "User Commands"
 .SH NAME
 vdl \- versatile downloader for Linux (yt-dlp + aria2c + gallery-dl)
 .SH SYNOPSIS
@@ -81,8 +81,10 @@ Maximum overall download speed (aria2c) or rate cap (yt-dlp).
 Per-download speed limit.
 .TP
 .B \-\-name \fINAME\fR
-Save a single download under this filename (the extension is appended when
-NAME has none).  For a playlist URL, NAME becomes the folder name instead.
+Save a single download under this plain filename (the extension is appended
+when NAME has none).  Path separators, \fB.\fR/\fB..\fR, and a leading
+\fB\-\fR are rejected with exit 2.  For a playlist URL, NAME becomes the
+folder name instead.
 .TP
 .B \-\-output \fIPATH\fR
 Exact destination for a single URL.  A PATH whose last component has an
@@ -91,7 +93,10 @@ items go directly inside it).  Cannot be combined with \-\-name.
 .TP
 .B \-\-zip\fR[\fB=\fINAME.zip\fR]
 Archive this run's downloads into a zip in the save directory.  With no
-name, an automatic vdl-<timestamp>.zip is used.  Requires the zip command.
+name, an automatic vdl-<timestamp>.zip is used.  The archive is built under
+a temporary name and moved into place only after zip succeeds; a name that
+matches a downloaded file is refused.  Requires the zip command.  A missing
+or failing zip leaves the downloads in place but exits nonzero.
 .TP
 .B \-\-dry-run
 Print the resolved plan (engine, mode, URLs, save dir) without downloading.
@@ -110,6 +115,26 @@ Requires gallery-dl and cannot be combined with \-\-audio.
 .TP
 .B \-\-quiet
 Suppress the banner, status lines, summary, and downloader progress output.
+.TP
+.B \-\-on-collision \fIMODE\fR
+Policy for an existing destination of a direct file or embedded image:
+\fBskip\fR (default), \fBrename\fR (choose the next free name),
+\fBfail\fR (exit 2 for direct files, mark image items failed), or
+\fBoverwrite\fR (pass overwrite flags to aria2c/yt-dlp).  Media and gallery
+filenames are controlled by their engines.
+.TP
+.B \-\-json
+Print a machine-readable run report to stdout and suppress human output.
+Includes per-URL status, engines, files, counts, archive, and exit code.
+.TP
+.B \-\-json-lines
+Print one JSON object per completed item followed by a summary object.
+.TP
+.B \-\-doctor
+Check Bash, yt-dlp, optional engines, browser cookies, impersonation,
+config files, clipboard access, save-directory writability, and free space.
+Exits nonzero when a required check fails.  Combine with \-\-json for a
+machine-readable report.
 .TP
 .BR \-h ", " \-\-help
 Show help and exit.
@@ -137,7 +162,8 @@ Default max height, overridden by
 .BR \-q .
 .TP
 .B VDL_TMP_KEEP_DAYS
-Days to keep interrupted leftovers (default: 7).
+Days to keep interrupted partials and failed-run scratch directories
+(default: 7).
 .TP
 .B VDL_IMPERSONATE
 \fBauto\fR (first available target yt-dlp reports), \fBoff\fR, or a target name.

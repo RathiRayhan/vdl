@@ -17,8 +17,12 @@ build_yt_common() {
         --retries 10
         --fragment-retries 10
         --continue
-        --no-overwrites
     )
+    if [[ ${on_collision:-skip} == overwrite ]]; then
+        yt_common+=( --force-overwrites )
+    else
+        yt_common+=( --no-overwrites )
+    fi
     (( quiet )) && yt_common+=( --quiet )
     (( ! quiet )) && yt_common+=(
         --progress --console-title

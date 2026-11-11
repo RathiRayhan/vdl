@@ -70,6 +70,10 @@ print_plan() {
 
     # --dry-run: print the resolved plan and exit without downloading.
     if (( dry_run )); then
+        if (( ${json_output:-0} )); then
+            print_json_plan
+            exit 0
+        fi
         printf '%sURLs:%s\n' "$C_GRN" "$C_OFF"
         for u in "${urls[@]}"; do
             printf '   %s\n' "$u"

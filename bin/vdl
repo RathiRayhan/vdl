@@ -27,11 +27,14 @@
 #   classify.sh  direct/media split, image scan, --name/--output resolution
 #   ytdlp.sh     yt-dlp defaults and impersonation
 #   plan.sh      engine/mode strings and the dry-run plan
+#   report.sh    per-URL records and --json / --json-lines output
+#   doctor.sh    --doctor environment checks
 # See docs/SPEC.md for the behavior contract these files implement.
 
 set -u -o pipefail
 
-readonly VDL_VERSION="2.4.0"
+readonly VDL_VERSION="2.5.0"
+run_started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # Resolve the script's real location first, so a symlinked vdl on PATH can
 # still find its libraries.
@@ -41,7 +44,7 @@ if [[ -z $vdl_lib || ! -d $vdl_lib ]]; then
     printf 'vdl: library directory not found next to the script (expected lib/vdl/)\n' >&2
     exit 1
 fi
-for _lib in ui helpers images gallery downloads args settings collect paths classify ytdlp plan; do
+for _lib in ui helpers images gallery downloads args settings collect paths classify ytdlp plan report doctor; do
     # shellcheck source=/dev/null  # resolved at runtime
     # shellcheck disable=SC1090
     source "$vdl_lib/$_lib.sh"
@@ -50,6 +53,12 @@ done
 # 1-4. Parse, resolve settings, collect URLs, set up paths.
 parse_args "$@"
 resolve_settings
+# shellcheck disable=SC2154  # doctor is set by parse_args in lib/vdl/args.sh
+if (( doctor )); then
+    setup_paths
+    run_doctor
+    exit $?
+fi
 collect_urls
 # shellcheck disable=SC2154  # dry_run is set by parse_args in lib/vdl/args.sh
 (( dry_run )) || match_browser_ua
@@ -67,6 +76,7 @@ declare -a scan_pages=()
 declare -A scan_do=()
 declare -A scan_title=()
 declare -a yt_common=()
+declare -A direct_dest=()
 save_dir_abs=''
 
 classify_urls
@@ -78,10 +88,12 @@ print_plan
 
 rc=0
 cf_challenge=0
-direct_ok=0 direct_fail=0 media_ok=0 media_fail=0
+direct_ok=0 direct_fail=0 direct_skip=0 media_ok=0 media_fail=0 media_skip=0
 gallery_ok=0 gallery_fail=0
-img_ok=0 img_fail=0
+img_ok=0 img_fail=0 img_skip=0
 aria_attempted=0
+archive_fail=0
+archive_tmp=''
 zip_created=''
 declare -a failed_items=()
 declare -a run_files=()
@@ -111,8 +123,17 @@ fi
 
 # Ensure nonzero exit when any download failed, even if rc was not set
 # by every failure path (e.g. magnet failures followed by HTTP success).
-if (( direct_fail + media_fail + gallery_fail + img_fail > 0 )); then
+if (( direct_fail + media_fail + gallery_fail + img_fail + archive_fail > 0 )); then
     (( rc != 0 )) || rc=1
+fi
+
+# shellcheck disable=SC2154  # json_output/json_lines are set by parse_args
+if (( ${json_output:-0} )); then
+    if (( ${json_lines:-0} )); then
+        print_json_lines_report "$rc"
+    else
+        print_json_report "$rc"
+    fi
 fi
 
 trap - EXIT

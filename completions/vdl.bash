@@ -20,13 +20,17 @@ _vdl() {
             COMPREPLY=( $(compgen -f -- "$cur") )
             return
             ;;
+        --on-collision)
+            COMPREPLY=( $(compgen -W "skip rename fail overwrite" -- "$cur") )
+            return
+            ;;
         --referer|--user-agent|--proxy)
             return
             ;;
     esac
 
     if [[ $cur == -* ]]; then
-        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --dedupe --images --gallery --quiet --aria-opts --max-speed --limit-speed --name --output --zip --referer --user-agent --proxy" -- "$cur") )
+        COMPREPLY=( $(compgen -W "--help --version --browser --no-cookies --quality --audio --batch-file --no-aria --no-impersonate --download-dir --dry-run --dedupe --images --gallery --quiet --aria-opts --max-speed --limit-speed --name --output --zip --on-collision --referer --user-agent --proxy --json --json-lines --doctor" -- "$cur") )
     elif [[ $cur == *=* && $prev == --* ]]; then
         return
     else

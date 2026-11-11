@@ -18,6 +18,8 @@ source "$root/lib/vdl/ui.sh"
 source "$root/lib/vdl/helpers.sh"
 # shellcheck source=lib/vdl/gallery.sh
 source "$root/lib/vdl/gallery.sh"
+# shellcheck source=lib/vdl/report.sh
+source "$root/lib/vdl/report.sh"
 
 ok()  { pass=$((pass + 1)); }
 bad() { fail=$((fail + 1)); printf 'FAIL: %s\n' "$*" >&2; }
@@ -258,6 +260,39 @@ expect_fail_fn "zip rejects single dot" validate_zip_name '.'
 expect_fail_fn "zip rejects embedded .." validate_zip_name 'a..b.zip'
 expect_fail_fn "zip rejects option"     validate_zip_name '-r'
 
+# --- --name validation and run-name collision resolution ---------------------
+if validate_name 'movie.mp4'; then ok; else bad "validate_name plain"; fi
+if validate_name 'episode 1'; then ok; else bad "validate_name space"; fi
+if validate_name 'a..b.mkv'; then ok; else bad "validate_name embedded dots"; fi
+expect_fail_fn "name rejects empty"      validate_name ''
+expect_fail_fn "name rejects parent"     validate_name '../out.iso'
+expect_fail_fn "name rejects absolute"   validate_name '/tmp/out.iso'
+expect_fail_fn "name rejects slash"      validate_name 'sub/out.iso'
+expect_fail_fn "name rejects backslash"  validate_name 'sub\out.iso'
+expect_fail_fn "name rejects dotdot"     validate_name '..'
+expect_fail_fn "name rejects single dot" validate_name '.'
+expect_fail_fn "name rejects option"     validate_name '-x'
+
+_claimed_names=()
+claim_run_name 'same.iso'; expect_eq "claim first" "$_claimed_name" 'same.iso'
+claim_run_name 'same.iso'; expect_eq "claim duplicate" "$_claimed_name" 'same.1.iso'
+claim_run_name 'same.iso'; expect_eq "claim third" "$_claimed_name" 'same.2.iso'
+claim_run_name 'archive.tar.gz'; expect_eq "claim tar.gz first" "$_claimed_name" 'archive.tar.gz'
+claim_run_name 'archive.tar.gz'; expect_eq "claim tar.gz duplicate" "$_claimed_name" 'archive.tar.1.gz'
+_claimed_names=()
+free_dir=$(mktemp -d)
+: > "$free_dir/a.iso"
+claim_free_name "$free_dir" 'a.iso'; expect_eq "claim free on disk" "$_claimed_name" 'a.1.iso'
+claim_free_name "$free_dir" 'a.iso'; expect_eq "claim free in map" "$_claimed_name" 'a.2.iso'
+rm -rf "$free_dir"
+_claimed_names=()
+
+# --- JSON escaping -----------------------------------------------------------
+expect_eq "json quote/backslash" "$(json_escape 'a"b\c')" 'a\"b\\c'
+expect_eq "json newline/tab" "$(json_escape $'a\nb\tc')" 'a\nb\tc'
+expect_eq "json control char" "$(json_escape $'a\001b')" 'a\u0001b'
+expect_eq "json plain utf8" "$(json_escape 'héllo')" 'héllo'
+
 # --- download_images without yt-dlp preserves partial and sets failure -------
 # shellcheck source=lib/vdl/images.sh
 source "$root/lib/vdl/images.sh"
@@ -279,7 +314,7 @@ chmod +x "$utmp/bin/aria2c"
 if (
     PATH="$utmp/bin:$PATH"
     have() { [[ $1 != yt-dlp ]] && command -v "$1" >/dev/null 2>&1; }
-    quiet=1 no_aria=0 rc=0 img_ok=0 img_fail=0 ua='' aria_hook='' run_manifest=''
+    quiet=1 no_aria=0 rc=0 img_ok=0 img_fail=0 img_skip=0 ua='' aria_hook='' run_manifest=''
     save_dir=$utmp/dl tmp_dir=$utmp
     img_urls=('https://example.com/p.jpg')
     img_refs=('https://example.com/album')

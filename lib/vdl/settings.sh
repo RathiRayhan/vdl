@@ -8,6 +8,17 @@
 resolve_settings() {
     read_vdl_config
 
+    # Structured output must be the only thing on stdout.
+    (( ${json_output:-0} )) && quiet=1
+
+    case ${on_collision:-skip} in
+        skip|rename|fail|overwrite) ;;
+        *)
+            err "Invalid collision policy: $on_collision (try skip, rename, fail, overwrite)"
+            exit 2
+            ;;
+    esac
+
     # --gallery wins over the environment/config default.
     if (( ! gallery_mode )) && [[ ${VDL_GALLERY:-} == 1 || ${VDL_GALLERY:-} == yes ]]; then
         gallery_mode=1

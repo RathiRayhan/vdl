@@ -52,6 +52,16 @@ if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_UNSUPPORTED:-} == yes ]]; then
     printf 'ERROR: Unsupported URL: %s\n' "$last" >&2
     exit 1
 fi
+if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_SKIP:-} == yes ]]; then
+    last=''
+    for a in "$@"; do
+        case $a in
+            http://*|https://*) last=$a ;;
+        esac
+    done
+    printf '[download] %s has already been downloaded\n' "$last"
+    exit 0
+fi
 if [[ ${0##*/} == gallery-dl && ${FAKE_GALLERY_NOISY:-} == yes ]]; then
     printf 'GALLERY OUTPUT\n'
     printf 'GALLERY PROGRESS\n' >&2
@@ -146,6 +156,9 @@ if [[ ${0##*/} == yt-dlp && ${FAKE_YTDLP_CREATE:-} == yes ]]; then
     fi
 fi
 if [[ ${0##*/} == zip ]]; then
+    if [[ ${FAKE_ZIP_FAIL:-} == yes ]]; then
+        exit 1
+    fi
     # vdl runs: zip -q -r TARGET files... — create the archive file.
     for a in "$@"; do
         if [[ $a != -* ]]; then

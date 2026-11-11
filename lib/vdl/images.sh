@@ -9,6 +9,8 @@
 # default curl/aria2 agents and require a page referer).
 img_ua="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
+
+
 # Scan pages without a dedicated yt-dlp extractor (generic/html5) for
 # embedded <img> links and queue them as image downloads.  Known-site
 # extractors (youtube, ...) are left alone, and --dry-run never touches the
@@ -266,6 +268,72 @@ download_images() {
             [[ ${img_refs[$j]} == "$ref" ]] && batch+=("${img_urls[$j]}")
         done
 
+        # Resolve one unique filename per image in this destination folder.
+        # A pre-existing regular file is not this run's download: report it as
+        # skipped instead of counting it as a success.  Partials with an
+        # .aria2 sidecar stay in the batch so they can be retried.
+        declare -A img_name=()
+        declare -a img_pending=()
+        _claimed_names=()
+        for u in "${batch[@]}"; do
+            if name=$(url_filename "$u"); then
+                claim_run_name "$name"
+                name=$_claimed_name
+                img_name[$u]=$name
+                dest=$dir/$name
+                if [[ -f $dest && ! -e ${dest}.aria2 ]]; then
+                    case ${on_collision:-skip} in
+                        rename)
+                            claim_free_name "$dir" "$name"
+                            name=$_claimed_name
+                            img_name[$u]=$name
+                            dest=$dir/$name
+                            ;;
+                        overwrite)
+                            : # keep the requested path and let the engine replace it
+                            ;;
+                        fail)
+                            img_fail=$((img_fail + 1))
+                            failed_items+=("$u|destination already exists")
+                            (( rc )) || rc=1
+                            if (( use_aria )); then
+                                report_item "$u" aria2c failed "$dest" "destination already exists"
+                            else
+                                report_item "$u" yt-dlp failed "$dest" "destination already exists"
+                            fi
+                            ui_result 1 "$(ui_name "$u")"
+                            continue
+                            ;;
+                        *)
+                            if manifest_has_file "$dest"; then
+                                # Another page already downloaded this
+                                # basename in the same folder during this run;
+                                # keep both images.
+                                claim_free_name "$dir" "$name"
+                                name=$_claimed_name
+                                img_name[$u]=$name
+                                dest=$dir/$name
+                            else
+                                img_skip=$((img_skip + 1))
+                                if (( use_aria )); then
+                                    report_item "$u" aria2c skipped "$dest" "destination already exists"
+                                else
+                                    report_item "$u" yt-dlp skipped "$dest" "destination already exists"
+                                fi
+                                ui_skip "$(ui_name "$u")"
+                                continue
+                            fi
+                            ;;
+                    esac
+                fi
+            else
+                img_name[$u]=''
+            fi
+            img_pending+=("$u")
+        done
+        batch=("${img_pending[@]}")
+        (( ${#batch[@]} )) || continue
+
         img_rc=0
         if (( use_aria )); then
             declare -a img_aria=(
@@ -277,16 +345,25 @@ download_images() {
                 "--referer=$ref"
                 "--user-agent=${ua:-$img_ua}"
             )
+            if [[ ${on_collision:-skip} == overwrite ]]; then
+                img_aria+=( --allow-overwrite=true --auto-file-renaming=false --continue=false )
+            fi
             (( quiet )) && img_aria+=( --quiet=true )
             if [[ -n ${aria_hook:-} && -x $aria_hook ]]; then
                 img_aria+=( "--on-download-complete=$aria_hook" )
             fi
-            aria2c "${img_aria[@]}" "${batch[@]}" || img_rc=$?
+            if (( ${json_output:-0} )); then
+                aria2c "${img_aria[@]}" "${batch[@]}" 1>&2 || img_rc=$?
+            else
+                aria2c "${img_aria[@]}" "${batch[@]}" || img_rc=$?
+            fi
         fi
 
         if (( img_rc == 0 )) && (( use_aria )); then
             for u in "${batch[@]}"; do
+                name=${img_name[$u]:-}
                 ui_result 0 "$(ui_name "$u")"
+                report_item "$u" aria2c ok "${name:+$dir/$name}" ""
             done
             img_ok=$((img_ok + ${#batch[@]}))
             continue
@@ -295,11 +372,13 @@ download_images() {
         if (( use_aria )); then
             # Only retry the images that are still incomplete; -Z downloads
             # sequentially, so some may have completed before the failure.
-            # Completed images (no .aria2 sidecar and non-empty file) are
-            # counted separately from retried/failed ones.
+            # Completed images are counted separately from retried/failed
+            # ones, but only when they were produced by this run (pre-existing
+            # files were filtered out above).
             declare -a retry_batch=()
             for u in "${batch[@]}"; do
-                if name=$(url_filename "$u"); then
+                name=${img_name[$u]:-}
+                if [[ -n $name ]]; then
                     dest=$dir/$name
                     if [[ -e "${dest}.aria2" ]]; then
                         if have yt-dlp; then
@@ -309,11 +388,13 @@ download_images() {
                             img_fail=$((img_fail + 1))
                             failed_items+=("$u|aria2c failed; partial kept for resume")
                             (( rc )) || rc=1
+                            report_item "$u" aria2c failed "" "aria2c failed; partial kept for resume"
                             ui_result 1 "$(ui_name "$u")"
                         fi
                         continue
                     elif [[ -s "$dest" ]]; then
                         img_ok=$((img_ok + 1))
+                        report_item "$u" aria2c ok "$dest" ""
                         ui_result 0 "$(ui_name "$u")"
                         continue
                     else
@@ -335,31 +416,87 @@ download_images() {
             img_fail=$((img_fail + ${#batch[@]}))
             for u in "${batch[@]}"; do
                 failed_items+=("$u|yt-dlp not found")
+                report_item "$u" yt-dlp failed "" "yt-dlp not found"
                 ui_result 1 "$(ui_name "$u")"
             done
             continue
         fi
 
         declare -a yt_img=( "${yt_common[@]}" --downloader "http,https:native"
-            -P "home:$dir" -P "temp:$tmp_dir"
+            -P "home:$dir"
             --referer "$ref" --user-agent "${ua:-$img_ua}" )
         [[ -n ${run_manifest:-} ]] && yt_img+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
+        local yt_name u_log url_tmp label
+        local -a partial_args=()
         for u in "${batch[@]}"; do
-            if name=$(url_filename "$u"); then
-                name=${name//%/%%}
+            name=${img_name[$u]:-}
+            label=${name:-$(ui_name "$u")}
+            if [[ -n $name ]]; then
+                yt_name=${name//%/%%}
             else
-                name='%(title)s.%(ext)s'
+                yt_name='%(title)s.%(ext)s'
+            fi
+
+            url_tmp=$(partial_dir_for "img|$dir|$name|$u")
+            if [[ -n $url_tmp ]] && mkdir -p -- "$url_tmp"; then
+                partial_args=( -P "temp:$url_tmp" )
+            else
+                partial_args=()
+                url_tmp=''
+            fi
+
+            u_log=''
+            if [[ -d ${tmp_dir:-} ]]; then
+                u_log=$(mktemp "$tmp_dir/img.log.XXXXXX") || u_log=''
             fi
             u_rc=0
-            yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+            if (( ${json_output:-0} )); then
+                if [[ -n $u_log ]]; then
+                    yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} \
+                        "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                        | tee "$u_log" >&2 || u_rc=$?
+                else
+                    yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} \
+                        "${partial_args[@]}" -o "$yt_name" "$u" >/dev/null 2>&1 || u_rc=$?
+                fi
+            elif [[ -n $u_log ]]; then
+                yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                    | tee "$u_log" | yt_bar || u_rc=$?
+            else
+                yt-dlp "${yt_img[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                    | yt_bar || u_rc=$?
+            fi
             (( u_rc )) && rc=$u_rc
+
             if (( u_rc )); then
                 img_fail=$((img_fail + 1))
                 failed_items+=("$u|yt-dlp exit $u_rc")
+                report_item "$u" yt-dlp failed "" "yt-dlp exit $u_rc"
+                ui_result 1 "$label"
+            elif [[ -n $u_log ]] && grep -qF 'already been downloaded' "$u_log"; then
+                if [[ ${on_collision:-skip} == fail ]]; then
+                    img_fail=$((img_fail + 1))
+                    failed_items+=("$u|destination already exists")
+                    (( rc )) || rc=1
+                    report_item "$u" yt-dlp failed "${name:+$dir/$name}" "destination already exists"
+                    ui_result 1 "$label"
+                else
+                    img_skip=$((img_skip + 1))
+                    report_item "$u" yt-dlp skipped "${name:+$dir/$name}" "destination already exists"
+                    ui_skip "$label"
+                fi
             else
                 img_ok=$((img_ok + 1))
+                report_item "$u" yt-dlp ok "${name:+$dir/$name}" ""
+                ui_result 0 "$label"
             fi
-            ui_result $u_rc "$(ui_name "$u")"
+
+            [[ -n $u_log ]] && rm -f -- "$u_log"
+            if (( u_rc == 0 )) && [[ -n $url_tmp ]]; then
+                rm -rf -- "$url_tmp"
+            fi
         done
     done
 }

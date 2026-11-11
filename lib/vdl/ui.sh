@@ -53,6 +53,20 @@ ui_result() {
     fi
 }
 
+# An item that already existed and was not downloaded in this run.
+ui_skip() {
+    (( quiet )) && return 0
+    printf '  %s#%s  %s\n' "$C_DIM" "$C_OFF" "$1"
+}
+
+# "N OK, M Failed" with an optional skipped count.
+ui_count_summary() {
+    local ok=$1 fail=$2 skip=${3:-0}
+    printf '%d OK, %d Failed' "$ok" "$fail"
+    (( skip )) && printf ', %d Skipped' "$skip"
+    return 0
+}
+
 # Human-friendly display name for a URL (basename when possible).
 ui_name() {
     local name
@@ -72,7 +86,9 @@ ui_name() {
 # "  Run  2/3 · 1 failed"
 ui_run_progress() {
     (( quiet )) && return 0
-    local done=$(( direct_ok + direct_fail + media_ok + media_fail + gallery_ok + gallery_fail + img_ok + img_fail ))
+    local done=$(( direct_ok + direct_fail + ${direct_skip:-0} \
+        + media_ok + media_fail + ${media_skip:-0} + gallery_ok + gallery_fail \
+        + img_ok + img_fail + ${img_skip:-0} ))
     local total=$(( ${#direct[@]} + ${#media[@]} + ${#gallery[@]} + ${#img_urls[@]} ))
     local failed=$(( direct_fail + media_fail + gallery_fail + img_fail ))
     (( total && done )) || return 0
@@ -342,18 +358,22 @@ print_summary() {
     ui_section "Summary"
     ui_row 'Total' "${#urls[@]}"
     if (( ${#direct[@]} )); then
-        ui_row 'Direct' "$direct_ok OK, $direct_fail Failed"
+        ui_row 'Direct' "$(ui_count_summary "$direct_ok" "$direct_fail" "${direct_skip:-0}")"
     fi
     if (( ${#media[@]} )); then
-        ui_row 'Media' "$media_ok OK, $media_fail Failed"
+        ui_row 'Media' "$(ui_count_summary "$media_ok" "$media_fail" "${media_skip:-0}")"
     fi
     if (( ${#gallery[@]} || gallery_ok || gallery_fail )); then
-        ui_row 'Gallery' "$gallery_ok OK, $gallery_fail Failed"
+        ui_row 'Gallery' "$(ui_count_summary "$gallery_ok" "$gallery_fail")"
     fi
     if (( ${#img_urls[@]} )); then
-        ui_row 'Images' "$img_ok OK, $img_fail Failed"
+        ui_row 'Images' "$(ui_count_summary "$img_ok" "$img_fail" "${img_skip:-0}")"
     fi
-    [[ -n ${zip_created:-} ]] && ui_row 'Archive' "$zip_created"
+    if [[ -n ${zip_created:-} ]]; then
+        ui_row 'Archive' "$zip_created"
+    elif (( ${archive_fail:-0} )); then
+        ui_row 'Archive' 'failed'
+    fi
     if (( SECONDS >= 60 )); then
         ui_row 'Time' "$((SECONDS / 60))m $((SECONDS % 60))s"
     else
@@ -370,8 +390,12 @@ print_summary() {
         done
     fi
     (( quiet )) || printf '\n'
-    if (( rc == 0 && direct_fail == 0 && media_fail == 0 && gallery_fail == 0 && img_fail == 0 )); then
+    if (( rc == 0 && direct_fail == 0 && media_fail == 0 && gallery_fail == 0 \
+        && img_fail == 0 && ${archive_fail:-0} == 0 )); then
         ui_result 0 "All downloads finished"
+    elif (( direct_fail == 0 && media_fail == 0 && gallery_fail == 0 \
+        && img_fail == 0 && ${archive_fail:-0} )); then
+        ui_result 1 "Downloads finished, archive failed"
     else
         ui_result 1 "Some downloads failed"
     fi

@@ -21,6 +21,8 @@ editing, refactoring, or asking an AI to modify the project.
 | `lib/vdl/classify.sh` | Direct/media/gallery split, image scan, name resolution, tool checks (`classify_urls`) |
 | `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
+| `lib/vdl/report.sh` | Per-URL records and `--json` / `--json-lines` reports |
+| `lib/vdl/doctor.sh` | `--doctor` environment checks (text and JSON) |
 | `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
 | `test/smoke.sh` | Stub-based CLI test runner (no network); cases live in `test/smoke/cases/` |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
@@ -36,7 +38,9 @@ the repo and from any install prefix.
 
 1. **Parse arguments** — vdl flags are consumed; unknown options and their
    values are kept in order for yt-dlp; URL-shaped tokens and bare `.txt`
-   batch files are extracted.  `--` ends vdl option parsing.
+   batch files are extracted.  `--` ends vdl option parsing.  `--doctor`
+   resolves settings and paths, runs the environment checks, and exits
+   before URL collection.
 2. **Resolve settings** — precedence: command line > environment > vdl
    config file > defaults.  Browser, cookies file, quality, audio mode, and
    speed limits are validated here.  `-n` clears browser and file cookies.
@@ -60,12 +64,13 @@ the repo and from any install prefix.
    probing.
 7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
 8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
-   name without `-Z`) with yt-dlp fallback for failed files; media via a
-   single yt-dlp invocation (aria2c for HTTP(S), native for HLS/DASH);
-   gallery URLs via gallery-dl; **then**, with `--images`, the pages are
-   scanned for images and the photos are downloaded, so videos always finish
-   first.
-9. **Finish** — temp cleanup, `--dedupe`, `--zip`, summary, exit.
+   name without `-Z`) with yt-dlp fallback for failed files; media via one
+   yt-dlp invocation per URL (aria2c for HTTP(S), native for HLS/DASH), so
+   each URL gets an independent outcome and gallery-dl fallback; gallery
+   URLs via gallery-dl; **then**, with `--images`, the pages are scanned for
+   images and the photos are downloaded, so videos always finish first.
+9. **Finish** — temp cleanup, `--dedupe`, `--zip`, summary, optional JSON
+   report, exit.
 
 ## Routing rule (`url_is_direct`)
 
@@ -92,16 +97,19 @@ tool is missing.
 | 2 | usage error (bad flag value, invalid speed/quality/browser/zip name, `--name`/`--output` with multiple URLs, `--gallery` with `--audio`) |
 | 130 | interrupted by Ctrl+C |
 
-Any nonzero failure counter (`direct_fail + media_fail + gallery_fail + img_fail > 0`) guarantees a nonzero exit code, even if another engine or retry succeeded in the same run.
+Any nonzero failure counter (`direct_fail + media_fail + gallery_fail + img_fail > 0`) or a failed requested archive (`archive_fail > 0`) guarantees a nonzero exit code, even if another engine or retry succeeded in the same run.
 
 ## Key state (owned by bin/vdl, shared with libs)
 
 - `urls`, `direct`, `media`, `gallery`, `img_urls` (+ `img_refs`, `img_dirs`): URL queues.
 - `passthru`: unknown yt-dlp options in original order.
-- Counters: `direct_ok/direct_fail`, `media_ok/media_fail`,
-  `gallery_ok/gallery_fail`, `img_ok/img_fail`, `rc`.
-- `save_dir`, `tmp_dir`, `out_dir`, `browser`, `quality`, `yt_common`,
-  `custom_direct`, `custom_media`, `out_folder_strip`.
+- Counters: `direct_ok/direct_fail/direct_skip`, `media_ok/media_fail/media_skip`,
+  `gallery_ok/gallery_fail`, `img_ok/img_fail/img_skip`, `archive_fail`, `rc`.
+- Report records: `report_urls`, `report_engines`, `report_statuses`,
+  `report_files`, `report_errors`, `NEW_FILES`.
+- `save_dir`, `tmp_dir`, `partials_base`, `out_dir`, `browser`, `quality`,
+  `yt_common`, `custom_direct`, `custom_media`, `out_folder_strip`,
+  `direct_dest`, `on_collision`.
 - `cookies_file`, `root_cookies`, `cookie_label`, `yt_cookie_args`,
   `termux_wakelock`.
 - `scan_pages`, `scan_do`, `scan_title`, `failed_items`, `zip_created`,
@@ -140,6 +148,8 @@ stricter non-zero value when both flags are set.
 
 - Single input URL only (exit 2 otherwise); cannot be combined with
   `--output`.
+- Must be a plain filename: `/`, `\`, `.`, `..`, and a leading `-` are
+  rejected with exit 2.  Use `--output` for a path.
 - Direct files: `NAME` with the URL's extension appended when NAME has
   none; a NAME containing an extension is used verbatim.
 - Single media/audio item: appended as the last `-o` to yt-dlp (the last
@@ -153,6 +163,38 @@ stricter non-zero value when both flags are set.
 - gallery-dl keeps its own filenames; `--name`/`--output` file naming is
   ignored for gallery URLs with a note (`--output` folder/save-dir still
   applies).
+
+## Direct destination contract
+
+- Each direct URL gets one resolved filename for the run.  Within a batch,
+  identical basenames are disambiguated in input order (`same.iso`,
+  `same.1.iso`, ...) before the yt-dlp fallback runs, so a duplicate cannot be
+  skipped as "already downloaded" under an earlier URL's name.
+- A destination that already exists before the run is **not** counted as a
+  successful download under the default `skip` policy.  aria2c may resume it;
+  the yt-dlp path reports it as skipped (`#`), and the summary includes a
+  `Skipped` count.  `--on-collision rename` chooses a free name, `fail` exits
+  2, and `overwrite` explicitly replaces it.
+- After an aria2c failure, a file is counted as OK only when this run's
+  completion manifest recorded it.  Existing files are skipped rather than
+  retried or claimed as successes.
+
+## Collision policy (`--on-collision MODE`)
+
+- Applies to direct files and embedded images.  Default `skip`.
+- `skip` — an existing destination is reported as skipped (`#`); within-run
+  duplicate basenames are still renamed so two distinct inputs are preserved.
+- `rename` — choose the next free name in the destination directory and in the
+  run's claim map (`same.iso` -> `same.1.iso`).  Exact `--output` file paths
+  are not renamed.
+- `fail` — direct-file collisions exit 2 before downloading.  Image collisions
+  discovered after media downloads are recorded as failed image items and set a
+  nonzero exit.
+- `overwrite` — pass overwrite flags to aria2c (`--allow-overwrite`,
+  `--auto-file-renaming=false`) and yt-dlp (`--force-overwrites`).  This is
+  explicitly destructive.
+- Media and gallery filenames are controlled by their engines; `rename` is not
+  applied to them, while `overwrite` still passes the yt-dlp force flag.
 
 ## Exact destination (`--output PATH`)
 
@@ -228,17 +270,22 @@ stricter non-zero value when both flags are set.
   browsers, or touches caches.
 - Temporary files and internal scratch state (manifests, logs, page scrapes)
   live under `$XDG_CACHE_HOME/vdl/runs/<id>` — never inside `save_dir`.
+- yt-dlp download partials live in a **stable** per-output directory under
+  `$XDG_CACHE_HOME/vdl/partials/<key>`, where the key is derived from the
+  URL, destination, and output settings.  A successful item removes its
+  partial directory; a failed or interrupted item keeps it for the next run.
 - Clean exits remove the run directory; failed or interrupted runs remove
-  internal scratch files and preserve any in-flight temp state until older
-  than `VDL_TMP_KEEP_DAYS` (default 7), when expired run directories under
-  `$XDG_CACHE_HOME/vdl/runs/` are swept.
+  internal scratch files and preserve partials until older than
+  `VDL_TMP_KEEP_DAYS` (default 7), when expired directories under both
+  `$XDG_CACHE_HOME/vdl/runs/` and `$XDG_CACHE_HOME/vdl/partials/` are swept.
 - `vdl` never recursively sweeps `save_dir` for `*.aria2` files or `.tmp`
   directories.
 - On an aria2c failure with yt-dlp available (direct or embedded images),
   the specific URL's partial and `.aria2` control file are removed before
-  the retry; completed files without a `.aria2` sidecar are counted
-  separately.  When yt-dlp is unavailable the partial is **kept** so a
-  later run can resume it, and the failure is reported.
+  the retry.  A destination is counted as completed only when the run
+  manifest recorded it; pre-existing files are reported as skipped.  When
+  yt-dlp is unavailable the partial is **kept** so a later run can resume it,
+  and the failure is reported.
 
 ## Zip contract (`--zip[=NAME.zip]`)
 
@@ -250,22 +297,60 @@ stricter non-zero value when both flags are set.
   and option-like `-*` names are rejected with exit 2).  `.zip` is appended
   when missing, and the archive is created inside `save_dir` with entries
   relative to it (playlist folders keep their structure).
+- The archive is built under a temporary name and moved into place only after
+  `zip` succeeds.  An archive name that matches a file downloaded in the same
+  run is refused; an existing destination is never deleted before a successful
+  archive.  A failed `zip` leaves the downloads in place but sets a nonzero
+  exit status and an "archive failed" verdict.
 - Requires the `zip` command; if missing, a warning is printed and the files
-  are left in place (downloads still succeed).
+  are left in place, but the run exits nonzero because the requested archive
+  was not created.
 - With no files downloaded in the run, a note is printed and no archive is
-  created.
+  created (this is not a failure).
+
+## Structured output contract (`--json` / `--json-lines`)
+
+- `--json` suppresses the human UI and writes one JSON object to stdout with
+  version, timestamps, save directory, counts, per-URL items, archive, and
+  exit code.  Downloader output is redirected to stderr so stdout stays valid.
+- Each item records the URL, engine (`aria2c`, `yt-dlp`, `gallery-dl`),
+  status (`ok`, `failed`, `skipped`), file paths produced by the run, and an
+  error string (or `null`).
+- `--json-lines` writes the same item objects one per line followed by a
+  `{"type":"summary",...}` object.  `--json --dry-run` writes a plan object
+  without touching the network.
+- JSON escaping is implemented in `lib/vdl/report.sh`; no jq or Python
+  dependency is required.
+
+## Doctor contract (`--doctor`)
+
+- Runs after argument/setting/path resolution but before URL collection, so
+  it works without a URL and never reads the clipboard.
+- Required checks: Bash 4+, yt-dlp, and a writable save directory.  Optional
+  checks: aria2c, ffmpeg, gallery-dl, zip, curl, python3, sha256sum,
+  clipboard tools, browser cookie source, impersonation targets, config
+  files, and free space.
+- Text output uses `[ok]`, `[warn]`, and `[FAIL]`; `--doctor --json` emits a
+  structured check list.  Required failures return exit status 1.
 
 ## Tests
 
 - `test/smoke.sh` — end-to-end CLI behavior against stub binaries; every new
   flag or routing change needs a case in `test/smoke/cases/`.
 - `test/unit.sh` — pure functions (`normalize_speed`, `normalize_quality`,
-  `sanitize_title`, `url_filename`, `url_is_direct`,
-  `url_is_gallery_host`); any new pure helper needs cases here.
+  `sanitize_title`, `url_filename`, `url_is_direct`, `validate_name`,
+  `claim_run_name`, `json_escape`, `url_is_gallery_host`); any new pure
+  helper needs cases here.
+- `test/smoke/cases/22-report-doctor.sh` — `--json`, `--json-lines`, and
+  `--doctor` contracts, including valid JSON parsing.
+- `test/smoke/cases/23-collision.sh` — `skip`/`rename`/`fail`/`overwrite`
+  behavior for direct files.
 - `test/integration.sh` — drives the REAL yt-dlp/aria2c/ffmpeg against a
-  local HTTP fixture (multi-direct, playlists, `--images` ordering,
-  image-only albums, fallback, `--name`/`--output`, `--zip`, pasted blocks,
-  and the python image extractor).  No internet access required.
+  local HTTP fixture (multi-direct, duplicate names, pre-existing skips,
+  playlists, per-URL media outcomes, `--images` ordering, image-only albums,
+  fallback, `--name`/`--output`, zip collision safety, interrupted-resume,
+  pasted blocks, and the python image extractor).  No internet access
+  required.
 - `lib/vdl/scrape.py` — the HTML image extractor for `--images` (python3;
   the bash regex pipeline remains as a fallback when python3 is absent).
 - `test/fixtures/` — anonymized real-world gallery HTML patterns; the

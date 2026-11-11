@@ -10,7 +10,7 @@ set -u
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 tmp=$(mktemp -d)
-trap 'kill ${srv:-0} 2>/dev/null || true; [[ -n ${VDL_INT_KEEP:-} ]] || rm -rf "$tmp"' EXIT
+trap 'kill ${srv:-0} ${rsrv:-0} 2>/dev/null || true; [[ -n ${VDL_INT_KEEP:-} ]] || rm -rf "$tmp"' EXIT
 
 pass=0
 fail=0
@@ -47,6 +47,18 @@ EOF
 cat > "$tmp/srv/photos.html" <<'EOF'
 <html><head><title>Photos</title></head><body><img src='srv/thumb/pic.webp'></body></html>
 EOF
+cat > "$tmp/srv/one.html" <<'EOF'
+<html><head><title>One</title></head><body><video src="srv/a.mp4"></video></body></html>
+EOF
+cat > "$tmp/srv/two.html" <<'EOF'
+<html><head><title>Two</title></head><body><video src="srv/b.mp4"></video></body></html>
+EOF
+mkdir -p "$tmp/srv/one" "$tmp/srv/two"
+printf 'ONE\n' > "$tmp/srv/one/same.iso"
+printf 'TWO\n' > "$tmp/srv/two/same.iso"
+printf 'NEW\n' > "$tmp/srv/pre.iso"
+printf 'ORIGINAL-ZIP\n' > "$tmp/srv/run.zip"
+head -c 2097152 /dev/urandom > "$tmp/srv/resume.iso"
 cat > "$tmp/fakebin/aria2c" <<'EOF'
 #!/usr/bin/env bash
 exit 1
@@ -75,6 +87,76 @@ fi
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
 python3 -m http.server "$port" --bind 127.0.0.1 --directory "$tmp/srv" >/dev/null 2>&1 &
 srv=$!
+
+# A tiny Range-capable server for the resume test.  Python's stdlib server
+# ignores Range, and a real resume test needs 206 responses.
+cat > "$tmp/range_server.py" <<'PY'
+import http.server, os, re, sys, time
+
+root = sys.argv[1]
+port = int(sys.argv[2])
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def _target(self):
+        path = self.path.split("?", 1)[0].lstrip("/")
+        full = os.path.normpath(os.path.join(root, path))
+        if not full.startswith(os.path.abspath(root) + os.sep):
+            return None
+        return full
+
+    def _headers(self, size, start, end, partial):
+        self.send_response(206 if partial else 200)
+        if partial:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.send_header("Accept-Ranges", "bytes")
+        self.end_headers()
+
+    def do_GET(self):
+        target = self._target()
+        if not target or not os.path.isfile(target):
+            self.send_error(404)
+            return
+        size = os.path.getsize(target)
+        start, end, partial = 0, size - 1, False
+        match = re.match(r"bytes=(\d+)-(\d*)$", self.headers.get("Range", ""))
+        if match:
+            start = int(match.group(1))
+            end = int(match.group(2)) if match.group(2) else end
+            if start >= size:
+                self.send_error(416)
+                return
+            partial = True
+        self._headers(size, start, end, partial)
+        with open(target, "rb") as fh:
+            fh.seek(start)
+            left = end - start + 1
+            while left > 0:
+                chunk = fh.read(min(65536, left))
+                if not chunk:
+                    break
+                try:
+                    self.wfile.write(chunk)
+                except BrokenPipeError:
+                    return
+                left -= len(chunk)
+                time.sleep(0.02)
+
+
+class Server(http.server.ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
+Server(("127.0.0.1", port), Handler).serve_forever()
+PY
+rport=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')
+python3 "$tmp/range_server.py" "$tmp/srv" "$rport" >/dev/null 2>&1 &
+rsrv=$!
 sleep 0.5
 
 export HOME="$tmp/home" NO_COLOR=1
@@ -98,11 +180,45 @@ check "multi-direct rc"  test $rc -eq 0
 check "a.iso exists"     test -f "$DL/a.iso"
 check "b.iso exists"     test -f "$DL/b.iso"
 
+# --- 1b. duplicate direct basenames are distinct under --no-aria -----------
+rm -rf "$DL"
+run_vdl -n --no-aria --no-impersonate "$B/one/same.iso" "$B/two/same.iso"; rc=$?
+check "duplicate direct rc" test $rc -eq 0
+check "duplicate direct first" sh -c "grep -qx ONE '$DL/same.iso'"
+check "duplicate direct second" sh -c "grep -qx TWO '$DL/same.1.iso'"
+
+# --- 1c. a pre-existing destination is skipped, not overwritten -------------
+rm -rf "$DL"
+mkdir -p "$DL"
+printf 'OLD\n' > "$DL/pre.iso"
+run_vdl -n --no-aria --no-impersonate "$B/pre.iso"; rc=$?
+check "pre-existing rc" test $rc -eq 0
+check "pre-existing preserved" sh -c "grep -qx OLD '$DL/pre.iso'"
+check "pre-existing skipped" grep -q 'Direct.*: 0 OK, 0 Failed, 1 Skipped' "$LOG"
+
+# --- 1d. --on-collision rename keeps the old file and downloads a new one ---
+rm -rf "$DL"
+mkdir -p "$DL"
+printf 'OLD\n' > "$DL/a.iso"
+run_vdl -n --no-impersonate --on-collision rename "$B/a.iso"; rc=$?
+check "rename collision rc" test $rc -eq 0
+check "rename collision old kept" sh -c "grep -qx OLD '$DL/a.iso'"
+check "rename collision new file" cmp "$tmp/srv/a.iso" "$DL/a.1.iso"
+
 # --- 2. playlist into a titled folder ---------------------------------------
 run_vdl -n --no-impersonate "$B/list.html"; rc=$?
 check "playlist rc"      test $rc -eq 0
 check "item 1 in folder" test -f "$DL/My List/1 - My List (1) [list-1].mp4"
 check "item 2 in folder" test -f "$DL/My List/2 - My List (2) [list-2].mp4"
+
+# --- 2b. partially failing media batch keeps per-URL outcomes ---------------
+rm -rf "$DL"
+run_vdl -n --no-impersonate "$B/one.html" "$B/two.html" "$B/missing.html"; rc=$?
+check "mixed media rc" test $rc -ne 0
+check "mixed media two files" sh -c "test \$(find '$DL' -type f -name '*.mp4' | wc -l) -eq 2"
+check "mixed media summary" grep -q 'Media.*: 2 OK, 1 Failed' "$LOG"
+check "mixed media success line" grep -q '✓.*one.html' "$LOG"
+check "mixed media failure line" grep -q '✗.*missing.html' "$LOG"
 
 # --- 3. --images: video finishes before the page scan -----------------------
 rm -rf "$DL"
@@ -145,6 +261,13 @@ PATH="$tmp/zipbin:$REAL" bash "$root/bin/vdl" -n --zip=run.zip "$B/a.iso" >"$LOG
 check "zip rc"    test $rc -eq 0
 check "zip file"  test -f "$DL/run.zip"
 check "zip content" sh -c "python3 -m zipfile -l '$DL/run.zip' 2>/dev/null | grep -q a.iso"
+
+# --- 7b. --zip cannot overwrite a file downloaded in the same run -----------
+rm -rf "$DL"
+run_vdl -n --no-impersonate --zip=run.zip "$B/run.zip"; rc=$?
+check "zip collision rc" test $rc -ne 0
+check "zip collision download kept" sh -c "grep -qx ORIGINAL-ZIP '$DL/run.zip'"
+check "zip collision reported" grep -q 'Archive.*: failed' "$LOG"
 
 # --- 8. multi-line paste ----------------------------------------------------
 rm -rf "$DL"
@@ -259,6 +382,21 @@ size=$(stat -c %s "$DL/Photos/pic.webp" 2>/dev/null || printf "0")
 check "image partial retry rc" test $rc -eq 0
 check "image partial ctrl gone" test ! -e "$DL/Photos/pic.webp.aria2"
 check "image partial full size" test "$size" -eq 30000
+
+# --- 17. interrupted yt-dlp download resumes from the stable partial --------
+rm -rf "$DL" "$tmp/cache/vdl/partials"
+resume_url="http://127.0.0.1:$rport/resume.iso"
+XDG_CACHE_HOME="$tmp/cache" PATH="$REAL" timeout -s INT 3 \
+    bash "$root/bin/vdl" -n --no-aria --no-impersonate --limit-speed 500K \
+    --download-dir "$DL" "$resume_url" >"$LOG" 2>&1 || true
+partial=$(find "$tmp/cache/vdl/partials" -type f -name '*.part' 2>/dev/null | head -1)
+check "resume partial exists" test -n "$partial"
+XDG_CACHE_HOME="$tmp/cache" PATH="$REAL" bash "$root/bin/vdl" -n --no-aria \
+    --no-impersonate --limit-speed 500K --download-dir "$DL" "$resume_url" >"$LOG" 2>&1
+rc=$?
+check "resume rc" test $rc -eq 0
+check "resume size" test "$(stat -c %s "$DL/resume.iso" 2>/dev/null || echo 0)" -eq 2097152
+check "resume log" grep -q 'Resuming download at byte' "$LOG"
 
 if (( fail )); then
     printf '\n--- debug: last vdl log ---\n'

@@ -31,8 +31,13 @@ complete -c vdl -l limit-speed -r -d 'Per-download speed limit'
 complete -c vdl -l name -r -d 'Save a single download under this filename'
 complete -c vdl -l output -r -d 'Exact destination: file or folder for a single URL'
 complete -c vdl -l zip -r -d 'Archive this run\'s downloads into a zip'
+complete -c vdl -l on-collision -x -a 'skip rename fail overwrite' \
+    -d 'Existing destination policy for direct files and images'
 complete -c vdl -l referer -r -d 'Send this Referer header'
 complete -c vdl -l user-agent -r -d 'Send this User-Agent header'
 complete -c vdl -l proxy -r -d 'Route downloads through this proxy'
+complete -c vdl -l json -d 'Print a machine-readable run report'
+complete -c vdl -l json-lines -d 'Print one JSON object per item'
+complete -c vdl -l doctor -d 'Check installed tools and configuration'
 
 complete -c vdl -a '(__fish_complete_suffix .txt)' -d 'URL list'

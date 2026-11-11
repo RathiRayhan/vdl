@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-12
+
+### Added
+
+- `--json` and `--json-lines` machine-readable run reports with per-URL engine,
+  status, files, errors, counts, archive, timestamps, and exit code.
+- `vdl --doctor` (and `--doctor --json`) checks Bash, yt-dlp, optional engines,
+  browser cookies, impersonation, config files, clipboard access, save-directory
+  writability, and free space.
+- `--on-collision skip|rename|fail|overwrite` controls existing destinations for
+  direct files and embedded images; the default remains `skip`.
+
+### Fixed
+
+- Run each media URL through its own yt-dlp invocation, so one unsupported or
+  failed URL no longer marks successful URLs in the same batch as failed.
+- Disambiguate duplicate direct basenames (`same.iso`, `same.1.iso`) before the
+  yt-dlp fallback, and report pre-existing destinations as skipped instead of
+  successful downloads.
+- Validate `--name` as a plain filename, rejecting path separators, `.`/`..`,
+  and leading `-` values with exit 2.
+- Keep yt-dlp partials in stable per-output directories under
+  `$XDG_CACHE_HOME/vdl/partials/`, so interrupted downloads resume on the next
+  run instead of restarting from byte 0.
+- Build `--zip` archives under a temporary name and move them into place only
+  after success. Refuse archive names that collide with a downloaded file, and
+  exit nonzero when the requested archive cannot be created.
+
 ## [2.4.0] - 2026-11-10
 
 ### Fixed

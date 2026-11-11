@@ -105,16 +105,20 @@ download_gallery() {
     done
 
     build_gallery_common
-    local u g_rc
+    local u g_rc manifest_before
     for u in "${gallery[@]}"; do
+        manifest_before=$(manifest_line_count)
         g_rc=0
         gallery_download_one "$u" || g_rc=$?
         if (( g_rc )); then
             gallery_fail=$((gallery_fail + 1))
             failed_items+=("$u|gallery-dl exit $g_rc")
             rc=$g_rc
+            report_item "$u" gallery-dl failed "" "gallery-dl exit $g_rc"
         else
+            manifest_files_since "$manifest_before"
             gallery_ok=$((gallery_ok + 1))
+            report_item "$u" gallery-dl ok "$(manifest_new_files_string)" ""
         fi
         ui_result "$g_rc" "$u"
     done

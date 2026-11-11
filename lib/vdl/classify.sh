@@ -5,6 +5,56 @@
 # vdl planning: split URLs into direct/media, run the image scanner, decide
 # the engines, resolve --name/--output, and check tool requirements.
 
+declare -A direct_dest=()
+declare -A _claimed_names=()
+
+# Resolve the filename each direct URL will be saved under.  aria2c's own
+# auto-renaming handles collisions in a normal batch, but the yt-dlp fallback
+# needs the same unique names to avoid silently skipping a duplicate.
+resolve_direct_names() {
+    direct_dest=()
+    _claimed_names=()
+    local u name candidate policy=${on_collision:-skip}
+    for u in "${direct[@]}"; do
+        if [[ -n ${custom_direct:-} ]]; then
+            name=$custom_direct
+            if [[ $policy == fail && -e $save_dir/$name ]]; then
+                err "Destination already exists: $save_dir/$name (use --on-collision rename/overwrite)"
+                exit 2
+            fi
+            if [[ $policy == rename && -z ${output_arg:-} && -e $save_dir/$name ]]; then
+                claim_free_name "$save_dir" "$name"
+                name=$_claimed_name
+            fi
+            direct_dest[$u]=$name
+            continue
+        fi
+        if ! name=$(url_filename "$u"); then
+            direct_dest[$u]=''
+            continue
+        fi
+        if [[ $policy == rename ]]; then
+            claim_free_name "$save_dir" "$name"
+            candidate=$_claimed_name
+        elif [[ $policy == overwrite ]]; then
+            candidate=$name
+            _claimed_names[$name]=1
+        else
+            claim_run_name "$name"
+            candidate=$_claimed_name
+            if [[ $policy == fail && $candidate != "$name" ]]; then
+                err "Duplicate destination name '$name' in this run"
+                exit 2
+            fi
+            if [[ $policy == fail && -e $save_dir/$candidate ]]; then
+                err "Destination already exists: $save_dir/$candidate (use --on-collision rename/overwrite)"
+                exit 2
+            fi
+        fi
+        direct_dest[$u]=$candidate
+    done
+}
+
 classify_urls() {
     direct=()
     media=()
@@ -148,4 +198,6 @@ classify_urls() {
         && [[ -n ${custom_name:-} || -n ${custom_direct:-} || -n ${custom_media:-} ]]; then
         note "gallery-dl keeps its own filenames; --name/--output file naming is ignored for gallery URLs"
     fi
+
+    resolve_direct_names
 }

@@ -34,13 +34,21 @@ Options:
       --aria-opts OPTS     Extra options for aria2c
       --max-speed RATE     Overall download speed limit (e.g. 1M, 500K)
       --limit-speed RATE   Per-download speed limit
-      --name NAME          Save a single download under this filename
+      --name NAME          Save a single download under this plain filename
+                           (no path separators or ..)
       --output PATH        Exact destination: file path (with extension) or
                            folder for a single URL
-      --zip[=NAME.zip]     Archive this run's downloads into a zip
+      --zip[=NAME.zip]     Archive this run's downloads into a zip; refuses
+                           a name that collides with a downloaded file
+      --on-collision MODE  Existing destination policy for direct files and
+                           embedded images: skip (default), rename, fail,
+                           overwrite.  Media/gallery keep engine naming.
       --referer URL        Send this Referer header
       --user-agent UA      Send this User-Agent header
       --proxy URL          Route downloads through this proxy
+      --json               Print a machine-readable run report to stdout
+      --json-lines         Print one JSON object per item, then a summary
+      --doctor             Check installed tools, config, browser, and paths
   -h, --help               Show this help
   -V, --version            Show version
 
@@ -389,6 +397,75 @@ validate_zip_name() {
         -*) return 1 ;;
     esac
     return 0
+}
+
+# Reject --name values that could escape save_dir or look like options.
+# Unlike validate_zip_name, a literal ".." inside a filename is allowed:
+# without a path separator it cannot traverse.
+validate_name() {
+    local name=$1
+    [[ -n $name ]] || return 1
+    case $name in
+        */*|*\\*|.|..|-*) return 1 ;;
+    esac
+    return 0
+}
+
+declare -A _claimed_names=()
+_claimed_name=''
+
+# Claim a filename for one run, appending .1, .2, ... before the extension
+# when an earlier URL already claimed the same basename.  The result is stored
+# in _claimed_name; callers must not use command substitution because that
+# would update the map in a subshell.  The caller resets the map per directory.
+claim_run_name() {
+    local name=$1 stem ext n
+    if [[ -z ${_claimed_names[$name]:-} ]]; then
+        _claimed_names[$name]=1
+        _claimed_name=$name
+        return 0
+    fi
+    if [[ $name == *.* && ${name%.*} != '' ]]; then
+        stem=${name%.*}
+        ext=.${name##*.}
+    else
+        stem=$name
+        ext=''
+    fi
+    n=1
+    while [[ -n ${_claimed_names[$stem.$n$ext]:-} ]]; do
+        n=$((n + 1))
+    done
+    name=$stem.$n$ext
+    _claimed_names[$name]=1
+    _claimed_name=$name
+}
+
+# Claim a name that is free both in DIR and in this run's claim map.
+claim_free_name() {
+    local dir=$1 name=$2 stem ext n cand
+    if [[ -z ${_claimed_names[$name]:-} && ! -e $dir/$name ]]; then
+        _claimed_names[$name]=1
+        _claimed_name=$name
+        return 0
+    fi
+    if [[ $name == *.* && ${name%.*} != '' ]]; then
+        stem=${name%.*}
+        ext=.${name##*.}
+    else
+        stem=$name
+        ext=''
+    fi
+    n=1
+    while :; do
+        cand=$stem.$n$ext
+        if [[ -z ${_claimed_names[$cand]:-} && ! -e $dir/$cand ]]; then
+            _claimed_names[$cand]=1
+            _claimed_name=$cand
+            return 0
+        fi
+        n=$((n + 1))
+    done
 }
 
 # The single routing rule: does this URL look like a direct file?  Magnet

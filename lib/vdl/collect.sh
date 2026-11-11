@@ -114,6 +114,10 @@ collect_urls() {
     # --name applies to a single URL; remember it before images are appended.
     named_url=''
     if [[ -n $custom_name ]]; then
+        if ! validate_name "$custom_name"; then
+            err "Invalid name: '$custom_name' (must be a plain filename without /, \\, .., or leading -)"
+            exit 2
+        fi
         if (( ${#urls[@]} != 1 )); then
             err "--name works with a single URL"
             exit 2

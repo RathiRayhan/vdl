@@ -310,6 +310,22 @@ Naming:
 - Playlist and album entries get a folder named after the playlist/album.
 - `-a` writes MP3 files to `<save_dir>/audio` with the same layout.
 
+Existing destination handling for **direct files and embedded images** is
+controlled by `--on-collision`:
+
+```sh
+vdl --on-collision skip URL...        # default: report existing files as skipped
+vdl --on-collision rename URL...      # save as file.1.iso instead
+vdl --on-collision fail URL...        # exit 2 before a direct download
+vdl --on-collision overwrite URL...   # replace existing files (destructive)
+```
+
+Media filenames come from yt-dlp and gallery-dl and keep their own collision
+behavior; `overwrite` still passes yt-dlp's force-overwrite flag.  Within a
+single run, different direct URLs that share a basename are always given
+distinct names under `skip`/`rename` so one input cannot silently replace
+another.
+
 ### Custom filename (`--name`)
 
 ```sh
@@ -322,7 +338,8 @@ vdl -a --name mytune "https://example.com/song"         # -> audio/mytune.mp3
 The extension is appended automatically when the name has none (audio mode
 always uses `.mp3`). For a **playlist URL**, `--name` names the folder
 instead — items inside keep their own titles. `--name` requires exactly one
-URL.
+URL and must be a plain filename: path separators, `.`/`..`, and a leading
+`-` are rejected with exit 2. Use `--output` when you need a path.
 
 ### Exact destination (`--output`)
 
@@ -369,7 +386,28 @@ vdl --quiet "https://example.com/video"        # no banner, status, or summary
 ```
 
 `--dry-run` shows the resolved engine, mode, URLs, save directory, and
-impersonation target without invoking any downloader.
+impersonation target without invoking any downloader.  Combine it with
+`--json` for a machine-readable plan.
+
+### Scripting output and diagnostics
+
+```sh
+vdl --json URL...                 # one JSON report on stdout
+vdl --json-lines URL...           # one object per item plus a summary
+vdl --doctor                      # environment check
+vdl --doctor --json               # machine-readable environment check
+```
+
+`--json` suppresses the human UI so stdout contains only the report.  It
+includes each URL's engine, status (`ok`, `failed`, or `skipped`), files,
+error, run counts, archive, timestamps, and exit code.  Warnings and
+downloader errors remain on stderr.
+
+`--doctor` checks Bash, yt-dlp, the optional engines and tools, browser
+cookie access, impersonation targets, clipboard support, config files,
+save-directory writability, and free space.  Missing optional tools are
+warnings; a missing yt-dlp or an unusable save directory is a failure and
+returns a nonzero status.
 
 ### Automatic recovery
 
@@ -436,23 +474,28 @@ vdl --zip=my-batch.zip links.txt               # explicit name
 The archive contains the run's files and playlist folders (relative to the
 save directory); `.zip` is appended when the given name lacks it. Files from
 earlier runs are never included, and `--dedupe` runs first so duplicates are
-not archived. The `zip` command is required; without it vdl warns and leaves
-the files in place.
+not archived. The archive is built under a temporary name and moved into
+place only after `zip` succeeds, so a failure cannot delete an existing file.
+An archive name that matches a file downloaded in the same run is refused.
+The `zip` command is required; a missing or failing `zip` leaves the
+downloads in place but makes the run exit nonzero with an "archive failed"
+verdict.
 
 ### Interrupting a download
 
 Press Ctrl+C any time. Items that finished are already in their final
-folders; only the in-flight one stays in the temp directory. vdl prints a
-hint and exits with status 130. Re-run the exact same command to resume —
-completed files are skipped and the interrupted one continues. Resume is
-byte-exact for both engines: aria2c restarts with a `Range` request where
-it stopped, and yt-dlp prints `Resuming download at byte N`.
+folders; only the in-flight one stays in a stable partial directory. vdl
+prints a hint and exits with status 130. Re-run the exact same command to
+resume — completed files are skipped and the interrupted one continues.
+Resume is byte-exact for both engines: aria2c restarts with a `Range`
+request where it stopped, and yt-dlp prints `Resuming download at byte N`.
 
-Leftover temp directories under `$XDG_CACHE_HOME/vdl/runs/` older than
-`VDL_TMP_KEEP_DAYS` (default 7) are cleaned automatically on exit, without
-touching unrelated files in your save directory. If aria2c fails while
-yt-dlp is unavailable, the partial is kept for a later resume instead of
-being deleted.
+Download partials live under `$XDG_CACHE_HOME/vdl/partials/` and are reused
+by the next invocation; per-run logs and manifests live under
+`$XDG_CACHE_HOME/vdl/runs/`. Both older than `VDL_TMP_KEEP_DAYS` (default 7)
+are cleaned automatically on exit, without touching unrelated files in your
+save directory. If aria2c fails while yt-dlp is unavailable, the partial is
+kept for a later resume instead of being deleted.
 
 ### Terminal output
 

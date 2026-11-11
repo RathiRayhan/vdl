@@ -47,10 +47,24 @@ setup_paths() {
     cache_base=${XDG_CACHE_HOME:-$HOME/.cache}/vdl
     run_id="$(date +%s)-$$-${RANDOM:-0}"
     tmp_dir=$cache_base/runs/$run_id
+    partials_base=$cache_base/partials
     run_manifest=$tmp_dir/manifest.txt
     aria_hook=$tmp_dir/aria-complete.sh
     tmp_keep_days=${VDL_TMP_KEEP_DAYS:-7}
     [[ $tmp_keep_days =~ ^[0-9]+$ ]] || tmp_keep_days=7
+
+    # A stable partial directory for one download, so an interrupted yt-dlp
+    # transfer can resume on the next invocation.  The run directory remains
+    # per-invocation for logs, manifests, and hooks.
+    partial_dir_for() {
+        local key
+        key=$(printf '%s' "$*" | sha256sum 2>/dev/null | awk '{print $1}')
+        if [[ -z $key ]]; then
+            key=$(printf '%s' "$*" | cksum 2>/dev/null | tr ' ' '-')
+        fi
+        [[ -n $key ]] || key=vdl-partial
+        printf '%s/%s\n' "$partials_base" "${key:0:24}"
+    }
 
     ensure_tmp_dir() {
         (( dry_run )) && return 0
@@ -83,6 +97,16 @@ EOF
             find "$cache_base/runs" -mindepth 1 -maxdepth 1 -type d \
                 -mtime +"$keep" -exec rm -rf -- {} + 2>/dev/null || true
             rmdir "$cache_base/runs" 2>/dev/null || true
+        fi
+        # Stable yt-dlp partials left by failed or interrupted runs follow the
+        # same retention policy, but successful downloads remove their own.
+        if [[ -d ${partials_base:-} ]]; then
+            find "$partials_base" -mindepth 1 -maxdepth 1 -type d \
+                -mtime +"$keep" -exec rm -rf -- {} + 2>/dev/null || true
+            rmdir "$partials_base" 2>/dev/null || true
+        fi
+        if [[ -n ${archive_tmp:-} ]]; then
+            rm -f -- "$archive_tmp" 2>/dev/null || true
         fi
     }
 

@@ -31,6 +31,10 @@ output_arg=''
 zip_mode=0
 zip_name=''
 zip_name_set=0
+json_output=0
+json_lines=0
+doctor=0
+on_collision='skip'
 
 declare -a batch_files=()
 declare -a raw_args=()
@@ -51,6 +55,29 @@ parse_args() {
             -V|--version)
                 printf 'vdl %s\n' "$VDL_VERSION"
                 exit 0
+                ;;
+            --on-collision)
+                (( $# > 0 )) || need_value "$arg"
+                on_collision=$1
+                shift
+                prev_unknown_flag=0
+                ;;
+            --on-collision=*)
+                on_collision=${arg#*=}
+                prev_unknown_flag=0
+                ;;
+            --json)
+                json_output=1
+                prev_unknown_flag=0
+                ;;
+            --json-lines)
+                json_output=1
+                json_lines=1
+                prev_unknown_flag=0
+                ;;
+            --doctor)
+                doctor=1
+                prev_unknown_flag=0
                 ;;
             -n|--no-cookies)
                 no_cookies=1

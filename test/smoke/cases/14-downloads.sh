@@ -18,8 +18,9 @@ if [[ $rc -eq 0 ]] \
     && [[ ! -e $VDL_SAVE_DIR/bad.iso.aria2 ]] \
     && [[ $(cat "$VDL_SAVE_DIR/good.iso") == complete ]] \
     && [[ $(grep -cxF 'ARG https://example.com/bad.iso' "$log") -eq 2 ]] \
-    && [[ $(grep -cxF 'ARG https://example.com/good.iso' "$log") -eq 1 ]] \
-    && [[ $(grep -cxF 'ARG https://example.com/missing.iso' "$log") -eq 2 ]]; then
+    && [[ $(grep -cxF 'ARG https://example.com/good.iso' "$log") -eq 0 ]] \
+    && [[ $(grep -cxF 'ARG https://example.com/missing.iso' "$log") -eq 2 ]] \
+    && grep -q 'Direct.*: 2 OK, 0 Failed, 1 Skipped' "$out"; then
     ok
 else
     bad "aria2c fallback should remove partials and retry only failed direct files"

@@ -46,12 +46,48 @@ collect_run_files() {
     done < "$run_manifest"
 }
 
+# Is this exact path recorded as completed in this run's manifest?
+manifest_has_file() {
+    local want=$1 line abs
+    [[ -n ${run_manifest:-} && -f $run_manifest ]] || return 1
+    want=$(readlink -f -- "$want" 2>/dev/null) || want=$1
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -n $line ]] || continue
+        abs=$(readlink -f -- "$line" 2>/dev/null) || abs=$line
+        [[ $abs == "$want" ]] && return 0
+    done < "$run_manifest"
+    return 1
+}
+
+manifest_line_count() {
+    [[ -f ${run_manifest:-} ]] || { printf '0\n'; return 0; }
+    wc -l < "$run_manifest"
+}
+
+# Populate NEW_FILES with paths appended to the manifest after line START.
+manifest_files_since() {
+    local start=$1 line i=0
+    NEW_FILES=()
+    [[ -f ${run_manifest:-} ]] || return 0
+    while IFS= read -r line || [[ -n $line ]]; do
+        i=$((i + 1))
+        (( i > start )) || continue
+        [[ -f $line ]] && NEW_FILES+=("$line")
+    done < "$run_manifest"
+}
+
+manifest_new_files_string() {
+    local f out=''
+    for f in "${NEW_FILES[@]}"; do
+        out+=$f$'\n'
+    done
+    printf '%s' "$out"
+}
+
 # With --zip: archive the files downloaded in this run into a single zip in
 # the save directory.  Runs after dedupe so duplicates are not archived.
 archive_run() {
     (( zip_mode )) || return 0
-
-    have zip || { warn "zip is not installed: skipping --zip archive"; return 0; }
 
     local root_dir=${save_dir_abs:-$save_dir}
     local base_prefix=$root_dir/
@@ -71,27 +107,69 @@ archive_run() {
         return 0
     fi
 
+    if ! have zip; then
+        warn "zip is not installed: cannot create the requested archive"
+        archive_fail=1
+        return 0
+    fi
+
     local target=$zip_name
     if [[ -z $target ]]; then
         target="vdl-$(date +%Y%m%d-%H%M%S).zip"
     else
         if ! validate_zip_name "$target"; then
             warn "Refusing unsafe archive name: $target"
+            archive_fail=1
             return 0
         fi
         [[ $target != *.zip ]] && target=$target.zip
         if ! validate_zip_name "$target"; then
             warn "Refusing unsafe archive name: $target"
+            archive_fail=1
             return 0
         fi
     fi
 
-    rm -f -- "$root_dir/$target"
-    if ( cd -- "$root_dir" && zip -q -r "$target" -- "${rel_entries[@]}" ); then
-        zip_created=$target
-        note "Archived ${#rel_entries[@]} file(s) to ${target}"
+    local target_path=$root_dir/$target target_cmp
+    target_cmp=$(readlink -f -- "$target_path" 2>/dev/null) || target_cmp=$target_path
+    if [[ -d $target_path ]]; then
+        warn "Refusing archive name '$target': destination is a directory"
+        archive_fail=1
+        return 0
+    fi
+    for f in "${run_files[@]}"; do
+        if [[ $f == "$target_cmp" ]]; then
+            warn "Refusing archive name '$target': it matches a file downloaded in this run"
+            archive_fail=1
+            return 0
+        fi
+    done
+
+    # Build the archive under a temporary name and move it into place only
+    # after zip succeeds.  A failed archive must never delete an existing
+    # destination (or a downloaded file with the requested name).
+    archive_tmp=$(mktemp "$root_dir/.vdl-archive.XXXXXX") || {
+        warn "could not create a temporary archive in $root_dir"
+        archive_fail=1
+        return 0
+    }
+    rm -f -- "$archive_tmp"
+    if ( cd -- "$root_dir" && zip -q -r "$archive_tmp" -- "${rel_entries[@]}" ); then
+        if mv -f -- "$archive_tmp" "$target_path"; then
+            archive_tmp=''
+            zip_created=$target
+            note "Archived ${#rel_entries[@]} file(s) to ${target}"
+        else
+            warn "archive was created but could not be moved into place"
+            rm -f -- "$archive_tmp"
+            archive_tmp=''
+            archive_fail=1
+        fi
     else
         warn "zip failed — files were left in place"
+        rm -f -- "$archive_tmp"
+        archive_tmp=''
+        archive_fail=1
     fi
 }
 
@@ -153,9 +231,27 @@ download_directs() {
         return 0
     fi
 
+    local u name
+    local -a aria_queue=()
+    if [[ ${on_collision:-skip} == skip ]]; then
+        for u in "${direct[@]}"; do
+            name=${direct_dest[$u]:-}
+            if [[ -n $name && -f $save_dir/$name && ! -e $save_dir/${name}.aria2 ]]; then
+                direct_skip=$((direct_skip + 1))
+                ui_skip "$name"
+                report_item "$u" aria2c skipped "$save_dir/$name" "destination already exists"
+                continue
+            fi
+            aria_queue+=("$u")
+        done
+    else
+        aria_queue=("${direct[@]}")
+    fi
+    (( ${#aria_queue[@]} )) || return 0
+
     aria_attempted=1
     ui_section "Direct Downloads via aria2c"
-    for u in "${direct[@]}"; do
+    for u in "${aria_queue[@]}"; do
         ui_item "$(ui_name "$u")"
     done
 
@@ -165,12 +261,16 @@ download_directs() {
         --file-allocation=none
         -d "$save_dir"
     )
-    # aria2c ignores -o when -Z is used, so pick one or the other: a custom
-    # name implies a single URL, which does not need -Z anyway.
-    if [[ -n ${custom_direct:-} ]]; then
-        aria_args+=( -o "$custom_direct" )
+    local per_url_mode=0 aria_rc=0 urc
+    if [[ -n ${custom_direct:-} || ${on_collision:-skip} == rename ]]; then
+        per_url_mode=1
     else
         aria_args+=( -Z )
+    fi
+    if [[ ${on_collision:-skip} == overwrite ]]; then
+        # --continue=true treats an existing complete file as done without
+        # fetching it; overwrite needs a fresh request.
+        aria_args+=( --allow-overwrite=true --auto-file-renaming=false --continue=false )
     fi
     [[ -n $ua ]] && aria_args+=( "--user-agent=$ua" )
     [[ -n $referer ]] && aria_args+=( "--referer=$referer" )
@@ -191,21 +291,50 @@ download_directs() {
         aria_args+=($aria_opts)
     fi
 
-    aria_rc=0
     if [[ -d ${tmp_dir:-} ]]; then
         aria_log=$(mktemp "$tmp_dir/aria.log.XXXXXX") || aria_log=''
     else
         aria_log=$(mktemp) || aria_log=''
     fi
-    if [[ -n $aria_log ]]; then
-        aria2c "${aria_args[@]}" "${direct[@]}" 2>&1 | tee "$aria_log" || aria_rc=$?
+    if (( per_url_mode )); then
+        local -a aria_this=()
+        for u in "${aria_queue[@]}"; do
+            name=${direct_dest[$u]:-}
+            aria_this=( "${aria_args[@]}" )
+            [[ -n $name ]] && aria_this+=( -o "$name" )
+            urc=0
+            if [[ -n $aria_log ]]; then
+                if (( ${json_output:-0} )); then
+                    aria2c "${aria_this[@]}" "$u" 2>&1 | tee -a "$aria_log" >&2 || urc=$?
+                else
+                    aria2c "${aria_this[@]}" "$u" 2>&1 | tee -a "$aria_log" || urc=$?
+                fi
+            elif (( ${json_output:-0} )); then
+                aria2c "${aria_this[@]}" "$u" >/dev/null 2>&1 || urc=$?
+            else
+                aria2c "${aria_this[@]}" "$u" || urc=$?
+            fi
+            if (( urc )); then
+                (( aria_rc )) || aria_rc=$urc
+            fi
+        done
+    elif [[ -n $aria_log ]]; then
+        if (( ${json_output:-0} )); then
+            aria2c "${aria_args[@]}" "${aria_queue[@]}" 2>&1 | tee "$aria_log" >&2 || aria_rc=$?
+        else
+            aria2c "${aria_args[@]}" "${aria_queue[@]}" 2>&1 | tee "$aria_log" || aria_rc=$?
+        fi
+    elif (( ${json_output:-0} )); then
+        aria2c "${aria_args[@]}" "${aria_queue[@]}" >/dev/null 2>&1 || aria_rc=$?
     else
-        aria2c "${aria_args[@]}" "${direct[@]}" || aria_rc=$?
+        aria2c "${aria_args[@]}" "${aria_queue[@]}" || aria_rc=$?
     fi
     if (( aria_rc == 0 )); then
-        direct_ok=${#direct[@]}
-        for u in "${direct[@]}"; do
+        direct_ok=${#aria_queue[@]}
+        for u in "${aria_queue[@]}"; do
+            name=${direct_dest[$u]:-}
             ui_result 0 "$(ui_name "$u")"
+            report_item "$u" aria2c ok "${name:+$save_dir/$name}" ""
         done
         rm -f -- "$aria_log"
         return 0
@@ -214,7 +343,7 @@ download_directs() {
     rm -f -- "$aria_log"
 
     direct_pending=()
-    for u in "${direct[@]}"; do
+    for u in "${aria_queue[@]}"; do
         # yt-dlp cannot fetch magnet/torrent payloads; report those
         # failures instead of retrying the wrong thing.
         local lower_u=${u,,}
@@ -225,33 +354,44 @@ download_directs() {
                 direct_fail=$((direct_fail + 1))
                 failed_items+=("$u|aria2c failed")
                 (( rc )) || rc=1
+                report_item "$u" aria2c failed "" "aria2c failed"
                 ui_result 1 "$(ui_name "$u")"
                 continue
                 ;;
         esac
 
-        if name=$(url_filename "$u"); then
+        name=${direct_dest[$u]:-}
+        if [[ -n $name ]]; then
             dest=$save_dir/$name
-            if [[ -f ${dest}.aria2 ]]; then
+            if manifest_has_file "$dest"; then
+                # This run's aria2c hook recorded the file, so it completed
+                # even though the batch exited nonzero.
+                direct_ok=$((direct_ok + 1))
+                ui_result 0 "$name"
+                report_item "$u" aria2c ok "$dest" ""
+            elif [[ -f ${dest}.aria2 ]] || [[ ! -e $dest ]]; then
                 # Remove the incomplete file and its control file before
                 # retrying.  yt-dlp with --no-overwrites would otherwise
                 # mistake the aria2c partial for a completed download.
                 # When yt-dlp is unavailable, keep the partial so a later
                 # run can resume it with aria2c.
-                if have yt-dlp; then
-                    rm -f -- "${dest}.aria2" "$dest"
-                    direct_pending+=("$u")
-                else
+                if [[ -f ${dest}.aria2 ]] && ! have yt-dlp; then
                     direct_fail=$((direct_fail + 1))
                     failed_items+=("$u|aria2c failed; partial kept for resume")
                     (( rc )) || rc=1
+                    report_item "$u" aria2c failed "" "aria2c failed; partial kept for resume"
                     ui_result 1 "$(ui_name "$u")"
+                else
+                    rm -f -- "${dest}.aria2" "$dest"
+                    direct_pending+=("$u")
                 fi
-            elif [[ ! -f $dest ]]; then
-                direct_pending+=("$u")
             else
-                direct_ok=$((direct_ok + 1))
-                ui_result 0 "$name"
+                # A destination that predates this run is not a success.  Do
+                # not retry it through yt-dlp either; report it explicitly so
+                # a stale or conflicting file cannot masquerade as a download.
+                direct_skip=$((direct_skip + 1))
+                ui_skip "$name"
+                report_item "$u" aria2c skipped "$dest" "destination already exists"
             fi
         else
             direct_pending+=("$u")
@@ -281,13 +421,14 @@ download_pending_directs() {
         direct_fail=$((direct_fail + ${#direct_pending[@]}))
         for u in "${direct_pending[@]}"; do
             failed_items+=("$u|yt-dlp not found")
+            report_item "$u" yt-dlp failed "" "yt-dlp not found"
             ui_result 1 "$(ui_name "$u")"
         done
         return 0
     fi
 
     declare -a yt_direct=( "${yt_common[@]}" --downloader "http,https:native" )
-    yt_direct+=( -P "home:$save_dir" -P "temp:$tmp_dir" )
+    yt_direct+=( -P "home:$save_dir" )
     [[ -n ${run_manifest:-} ]] && yt_direct+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
     if [[ $browser != none ]]; then
         yt_direct+=( --cookies-from-browser "$browser" )
@@ -298,31 +439,92 @@ download_pending_directs() {
     [[ -n $proxy ]] && yt_direct+=( --proxy "$proxy" )
 
     # yt-dlp's generic extractor calls unknown file types "unknown_video".
-    # Use the URL basename so direct files keep their real name, unless a
-    # custom name was requested.
+    # Use the resolved basename so direct files keep their real name, unless a
+    # custom name was requested.  Duplicate basenames were disambiguated by
+    # resolve_direct_names() so a second URL cannot be skipped as "already
+    # downloaded" under the first URL's name.
+    local u name yt_name u_rc u_log url_tmp label
+    local -a partial_args=()
     for u in "${direct_pending[@]}"; do
-        if [[ -n ${custom_direct:-} ]]; then
-            name=$custom_direct
-        elif name=$(url_filename "$u"); then
-            name=${name//%/%%}
+        if [[ -n ${direct_dest[$u]:-} ]]; then
+            name=${direct_dest[$u]}
+            yt_name=${name//%/%%}
         else
-            name='%(title)s.%(ext)s'
+            name=''
+            yt_name='%(title)s.%(ext)s'
         fi
-        (( aria_attempted )) || ui_item "$(ui_name "$u")"
+        label=${name:-$(ui_name "$u")}
+        (( aria_attempted )) || ui_item "$label"
+
+        # Stable partial directory: an interrupted transfer reuses it on the
+        # next invocation instead of starting over in a new run directory.
+        url_tmp=$(partial_dir_for "direct|$save_dir|$name|$u")
+        if [[ -n $url_tmp ]] && mkdir -p -- "$url_tmp"; then
+            partial_args=( -P "temp:$url_tmp" )
+        else
+            partial_args=()
+            url_tmp=''
+        fi
+
+        u_log=''
+        if [[ -d ${tmp_dir:-} ]]; then
+            u_log=$(mktemp "$tmp_dir/direct.log.XXXXXX") || u_log=''
+        fi
         u_rc=0
-        yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} -o "$name" "$u" 2>&1 | yt_bar || u_rc=$?
+        if (( ${json_output:-0} )); then
+            if [[ -n $u_log ]]; then
+                yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                    | tee "$u_log" >&2 || u_rc=$?
+            else
+                yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" -o "$yt_name" "$u" >/dev/null 2>&1 || u_rc=$?
+            fi
+        elif [[ -n $u_log ]]; then
+            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} \
+                "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                | tee "$u_log" | yt_bar || u_rc=$?
+        else
+            yt-dlp "${yt_direct[@]}" ${passthru[@]+"${passthru[@]}"} \
+                "${partial_args[@]}" -o "$yt_name" "$u" 2>&1 \
+                | yt_bar || u_rc=$?
+        fi
         (( u_rc )) && rc=$u_rc
+
         if (( u_rc )); then
             direct_fail=$((direct_fail + 1))
             failed_items+=("$u|yt-dlp exit $u_rc")
+            report_item "$u" yt-dlp failed "" "yt-dlp exit $u_rc"
+            ui_result 1 "$label"
+        elif [[ -n $u_log ]] && grep -qF 'already been downloaded' "$u_log"; then
+            # A pre-existing destination is not a completed download from
+            # this run.
+            if [[ ${on_collision:-skip} == fail ]]; then
+                direct_fail=$((direct_fail + 1))
+                failed_items+=("$u|destination already exists")
+                (( rc )) || rc=1
+                report_item "$u" yt-dlp failed "${name:+$save_dir/$name}" "destination already exists"
+                ui_result 1 "$label"
+            else
+                direct_skip=$((direct_skip + 1))
+                report_item "$u" yt-dlp skipped "${name:+$save_dir/$name}" "destination already exists"
+                ui_skip "$label"
+            fi
         else
             direct_ok=$((direct_ok + 1))
+            report_item "$u" yt-dlp ok "${name:+$save_dir/$name}" ""
+            ui_result 0 "$label"
         fi
-        ui_result $u_rc "$(ui_name "$u")"
+
+        [[ -n $u_log ]] && rm -f -- "$u_log"
+        if (( u_rc == 0 )) && [[ -n $url_tmp ]]; then
+            rm -rf -- "$url_tmp"
+        fi
     done
 }
 
-# Media / page downloads via yt-dlp (single invocation for the whole batch).
+# Media / page downloads via yt-dlp.  Each URL is a separate invocation so a
+# failure in one item cannot mark successful items as failed.
 download_media() {
     if (( ${#media[@]} == 0 )); then
         return 0
@@ -373,7 +575,6 @@ download_media() {
             -x --audio-format mp3 --audio-quality 320K
             --embed-metadata --embed-thumbnail
             -P "home:$out_dir"
-            -P "temp:$tmp_dir"
             --output-na-placeholder '.'
             -o "$media_out_template"
         )
@@ -384,7 +585,6 @@ download_media() {
             --merge-output-format mp4
             --embed-metadata
             -P "home:$save_dir"
-            -P "temp:$tmp_dir"
             --output-na-placeholder '.'
             -o "$media_out_template"
         )
@@ -393,81 +593,111 @@ download_media() {
     [[ -n ${custom_media:-} ]] && yt_media+=( -o "$custom_media" )
     [[ -n ${run_manifest:-} ]] && yt_media+=( --print-to-file after_move:filepath "${run_manifest//%/%%}" )
 
-    media_rc=0
-    if [[ -d ${tmp_dir:-} ]]; then
-        media_log=$(mktemp "$tmp_dir/media.log.XXXXXX") || media_log=''
-    else
-        media_log=$(mktemp) || media_log=''
-    fi
-    if [[ -n $media_log ]]; then
-        yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | tee "$media_log" | yt_bar || media_rc=$?
-    else
-        yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} "${media[@]}" 2>&1 | yt_bar || media_rc=$?
-    fi
+    local u u_rc media_log url_tmp cand g_rc manifest_before
+    local gallery_ready=0
+    local -a partial_args=()
+    for u in "${media[@]}"; do
+        manifest_before=$(manifest_line_count)
+        url_tmp=$(partial_dir_for "media|$save_dir|$out_dir|$quality|$audio|${out_folder_strip:-0}|${custom_media:-}|$((have_aria && ! no_aria))|$u")
+        if [[ -n $url_tmp ]] && mkdir -p -- "$url_tmp"; then
+            partial_args=( -P "temp:$url_tmp" )
+        else
+            partial_args=()
+            url_tmp=''
+        fi
 
-    # A failed batch may contain URLs yt-dlp simply does not support.  Retry
-    # only those through gallery-dl; network/auth errors stay failures.
-    local -a retry_urls=()
-    local -A retry_rc=()
-    local cand m g_rc
-    if (( media_rc != 0 )) && have gallery-dl && (( ! gallery_mode )); then
-        local -A retry_seen=()
-        while IFS= read -r cand; do
-            [[ -n $cand ]] || continue
-            [[ -n ${retry_seen[$cand]:-} ]] && continue
-            for m in "${media[@]}"; do
-                if [[ $cand == "$m" ]]; then
-                    retry_urls+=("$cand")
-                    retry_seen[$cand]=1
+        media_log=''
+        if [[ -d ${tmp_dir:-} ]]; then
+            media_log=$(mktemp "$tmp_dir/media.log.XXXXXX") || media_log=''
+        fi
+        u_rc=0
+        if (( ${json_output:-0} )); then
+            if [[ -n $media_log ]]; then
+                yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" "$u" 2>&1 \
+                    | tee "$media_log" >&2 || u_rc=$?
+            else
+                yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} \
+                    "${partial_args[@]}" "$u" >/dev/null 2>&1 || u_rc=$?
+            fi
+        elif [[ -n $media_log ]]; then
+            yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} \
+                "${partial_args[@]}" "$u" 2>&1 \
+                | tee "$media_log" | yt_bar || u_rc=$?
+        else
+            yt-dlp "${yt_media[@]}" ${passthru[@]+"${passthru[@]}"} \
+                "${partial_args[@]}" "$u" 2>&1 \
+                | yt_bar || u_rc=$?
+        fi
+
+        if (( u_rc == 0 )); then
+            manifest_files_since "$manifest_before"
+            if [[ -n $media_log ]] && grep -qF 'already been downloaded' "$media_log" \
+                && (( ${#NEW_FILES[@]} == 0 )); then
+                if [[ ${on_collision:-skip} == fail ]]; then
+                    media_fail=$((media_fail + 1))
+                    failed_items+=("$u|destination already exists")
+                    rc=1
+                    report_item "$u" yt-dlp failed "" "destination already exists"
+                    ui_result 1 "$u"
+                else
+                    media_skip=$((media_skip + 1))
+                    ui_skip "$u"
+                    report_item "$u" yt-dlp skipped "" "destination already exists"
+                fi
+            else
+                media_ok=$((media_ok + 1))
+                ui_result 0 "$u"
+                report_item "$u" yt-dlp ok "$(manifest_new_files_string)" ""
+            fi
+            [[ -n $url_tmp ]] && rm -rf -- "$url_tmp"
+            [[ -n $media_log ]] && rm -f -- "$media_log"
+            continue
+        fi
+
+        [[ -n $media_log ]] && grep -qiE 'cloudflare|403[^0-9]*forbidden' "$media_log" && cf_challenge=1
+
+        # Only an explicit "Unsupported URL" is eligible for gallery-dl.
+        # Network/auth/Cloudflare failures stay yt-dlp failures.
+        local retry_gallery=0
+        if have gallery-dl && (( ! gallery_mode )); then
+            while IFS= read -r cand; do
+                if [[ $cand == "$u" ]]; then
+                    retry_gallery=1
                     break
                 fi
-            done
-        done < <(gallery_unsupported_urls "$media_log")
+            done < <(gallery_unsupported_urls "$media_log")
+        fi
 
-        if (( ${#retry_urls[@]} )); then
-            ui_section "Fallback Downloads via gallery-dl"
-            build_gallery_common
-            for cand in "${retry_urls[@]}"; do
-                ui_item "$cand"
-                g_rc=0
-                gallery_download_one "$cand" || g_rc=$?
-                retry_rc[$cand]=$g_rc
-                if (( g_rc )); then
-                    gallery_fail=$((gallery_fail + 1))
-                    failed_items+=("$cand|gallery-dl exit $g_rc")
-                    rc=$g_rc
-                else
-                    gallery_ok=$((gallery_ok + 1))
-                fi
-            done
-        fi
-    fi
-
-    if (( media_rc == 0 )); then
-        media_ok=${#media[@]}
-    else
-        [[ -n $media_log ]] && grep -qiE 'cloudflare|403[^0-9]*forbidden' "$media_log" && cf_challenge=1
-        if (( ${#retry_urls[@]} == 0 )); then
-            media_fail=${#media[@]}
-            for u in "${media[@]}"; do
-                failed_items+=("$u|yt-dlp exit $media_rc")
-            done
-            rc=$media_rc
+        if (( retry_gallery )); then
+            if (( ! gallery_ready )); then
+                ui_section "Fallback Downloads via gallery-dl"
+                build_gallery_common
+                gallery_ready=1
+            fi
+            g_rc=0
+            gallery_download_one "$u" || g_rc=$?
+            if (( g_rc )); then
+                gallery_fail=$((gallery_fail + 1))
+                failed_items+=("$u|gallery-dl exit $g_rc")
+                rc=$g_rc
+                report_item "$u" gallery-dl failed "" "gallery-dl exit $g_rc"
+                ui_result 1 "$u"
+            else
+                manifest_files_since "$manifest_before"
+                gallery_ok=$((gallery_ok + 1))
+                report_item "$u" gallery-dl ok "$(manifest_new_files_string)" ""
+                ui_result 0 "$u"
+            fi
+            # yt-dlp cannot use this URL, so its partial has no resume value.
+            [[ -n $url_tmp ]] && rm -rf -- "$url_tmp"
         else
-            for u in "${media[@]}"; do
-                [[ -n ${retry_rc[$u]+x} ]] && continue
-                media_fail=$((media_fail + 1))
-                failed_items+=("$u|yt-dlp exit $media_rc")
-            done
-            (( media_fail )) && rc=$media_rc
+            media_fail=$((media_fail + 1))
+            failed_items+=("$u|yt-dlp exit $u_rc")
+            rc=$u_rc
+            report_item "$u" yt-dlp failed "" "yt-dlp exit $u_rc"
+            ui_result 1 "$u"
         fi
-    fi
-    rm -f -- "$media_log"
-    for u in "${media[@]}"; do
-        if [[ -n ${retry_rc[$u]+x} ]]; then
-            ui_result "${retry_rc[$u]}" "$u"
-        else
-            ui_result "$media_rc" "$u"
-        fi
+        [[ -n $media_log ]] && rm -f -- "$media_log"
     done
 }

@@ -162,12 +162,13 @@ chmod +x "$fakebin/aria2c"
 if [[ $rc -eq 0 ]] \
     && [[ $(cat "$img_dl/Test Album/pic1.jpg") == 'complete-bytes' ]] \
     && [[ ! -e $img_dl/Test\ Album/pic2.png.aria2 ]] \
-    && grep -q 'Images.*: 2 OK, 0 Failed' "$out" \
+    && grep -q 'Images.*: 1 OK, 0 Failed, 1 Skipped' "$out" \
+    && grep -q '^  #  pic1.jpg$' "$out" \
     && [[ $(grep -cxF 'ARG https://cdn.example.com/album/pic2.png' "$log") -eq 2 ]] \
-    && [[ $(grep -cxF 'ARG https://cdn.example.com/album/pic1.jpg' "$log") -eq 1 ]]; then
+    && [[ $(grep -cxF 'ARG https://cdn.example.com/album/pic1.jpg' "$log") -eq 0 ]]; then
     ok
 else
-    bad "mixed image batch must count already-completed images and retry only incomplete ones"
+    bad "mixed image batch must skip pre-existing images and retry only incomplete ones"
 fi
 
 # --- 7. Permanent failure + HTTP retry success must still exit nonzero -------

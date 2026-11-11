@@ -28,9 +28,13 @@ _vdl() {
         '--name=[save a single download under this filename]:name:' \
         '--output=[exact destination: file or folder for a single URL]:path:_files' \
         '--zip=[archive this run\'"'"'s downloads into a zip]:archive:_files' \
+        '--on-collision=[existing destination policy]:mode:(skip rename fail overwrite)' \
         '--referer=[send this Referer header]:url:' \
         '--user-agent=[send this User-Agent header]:user agent:' \
         '--proxy=[route downloads through this proxy]:proxy:' \
+        '--json[print a machine-readable run report]' \
+        '--json-lines[print one JSON object per item]' \
+        '--doctor[check installed tools and configuration]' \
         '*:url or .txt file:_files -g "*.txt"'
 }
 
