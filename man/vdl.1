@@ -168,9 +168,16 @@ Days to keep interrupted partials and failed-run scratch directories
 .B VDL_IMPERSONATE
 \fBauto\fR (first available target yt-dlp reports), \fBoff\fR, or a target name.
 .TP
+.B VDL_IMAGES
+\fB1\fR or \fByes\fR scans generic album pages for embedded images by default.
+.TP
 .B VDL_GALLERY
 \fB1\fR or \fByes\fR enables \fB--gallery\fR mode by default (every non-direct
 URL goes through gallery-dl).
+.TP
+.B VDL_CONFIG_DIR
+Directory for vdl's own config file (default
+.IR ~/.config/vdl ).
 .TP
 .B VDL_CONFIG
 Extra yt-dlp config file (default
@@ -209,6 +216,8 @@ vdl "https://example.com/gallery/123"      # gallery-dl host routing
 vdl --gallery "https://example.com/gallery/123"
 vdl --download-dir ~/tmp "https://example.com/file.zip"
 vdl --aria-opts "--max-connection-per-server=8" "https://example.com/file.iso"
+vdl --json "https://example.com/file.iso"
+vdl --doctor
 .fi
 .RE
 .SH SEE ALSO

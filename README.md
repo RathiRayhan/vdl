@@ -499,7 +499,7 @@ vdl -f "bestvideo+bestaudio" --merge-output-format mkv "https://example.com/vide
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a target name |
 | `VDL_IMAGES` | unset | `1` or `yes` scans album pages for images |
 | `VDL_GALLERY` | unset | `1` or `yes` enables `--gallery` mode by default |
-| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted temp run directories in cache |
+| `VDL_TMP_KEEP_DAYS` | `7` | days to keep interrupted partials and failed-run scratch directories |
 | `VDL_CONFIG` | `~/.config/vdl/yt-dlp.conf` | extra yt-dlp config file |
 | `VDL_CONFIG_DIR` | `~/.config/vdl` | vdl config directory |
 | `NO_COLOR` | unset | disable colored output |
@@ -612,7 +612,7 @@ The repository layout:
 bin/vdl               command entry point and orchestration
 lib/vdl/              ui, helpers, images, gallery, and download engines,
                       plus args, settings, collect, paths, classify, ytdlp,
-                      plan
+                      plan, report, and doctor
 install.sh            installer/uninstaller
 completions/          bash, zsh, and fish completions
 man/vdl.1             man page

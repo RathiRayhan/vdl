@@ -86,7 +86,7 @@ install -Dm644 man/vdl.1 ~/.local/share/man/man1/vdl.1
 | `VDL_SAVE_DIR` | `$(xdg-user-dir DOWNLOAD)/vdl` | exact download directory |
 | `VDL_BROWSER` | auto-detect | default cookie source |
 | `VDL_QUALITY` | `1080` | default max video height |
-| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted temp run directories in cache this long |
+| `VDL_TMP_KEEP_DAYS` | `7` | keep interrupted partials and failed-run scratch directories this long |
 | `VDL_IMPERSONATE` | `auto` | `auto`, `off`, or a browser target |
 | `VDL_IMAGES` | unset | `1`/`yes` to always scan album pages for images |
 | `VDL_GALLERY` | unset | `1`/`yes` to enable `--gallery` mode by default |

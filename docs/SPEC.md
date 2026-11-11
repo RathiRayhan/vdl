@@ -10,24 +10,23 @@ editing, refactoring, or asking an AI to modify the project.
 |------|------|
 | `bin/vdl` | Orchestrator: sources the libraries and runs the pipeline in order |
 | `lib/vdl/ui.sh` | Colors, `warn/err/note`, status lines, progress bar, banner/summary |
-| `lib/vdl/helpers.sh` | Pure helpers: usage, speed/quality/title normalization, URL classification, config file, browser/clipboard detection, Termux detection and root Firefox cookie staging |
+| `lib/vdl/helpers.sh` | Shared helpers: usage, speed/quality/title normalization, URL classification, config, browser/clipboard detection, name validation and collision naming |
 | `lib/vdl/images.sh` | Embedded-image scanning (`scrape_images`) and downloading (`download_images`) |
 | `lib/vdl/gallery.sh` | gallery-dl host detection, downloads, and `Unsupported URL` fallback (`url_is_gallery_host`, `download_gallery`) |
 | `lib/vdl/downloads.sh` | Direct/media download engines and `--dedupe` |
 | `lib/vdl/args.sh` | Command-line parsing (`parse_args`) |
-| `lib/vdl/settings.sh` | Browser/cookie/quality/speed resolution (`resolve_settings`, `build_cookie_args`) |
-| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, root cookie staging, `--name`/`--output` validation (`collect_urls`) |
-| `lib/vdl/paths.sh` | Save dir, temp dir, traps, Termux wake lock, `--output` repointing (`setup_paths`) |
+| `lib/vdl/settings.sh` | Browser/quality/speed/collision resolution (`resolve_settings`) |
+| `lib/vdl/collect.sh` | URL collection, dedupe, multi-line paste, and `--name`/`--output` validation (`collect_urls`) |
+| `lib/vdl/paths.sh` | Save dir, run and partial temp dirs, traps, `--output` repointing (`setup_paths`) |
 | `lib/vdl/classify.sh` | Direct/media/gallery split, image scan, name resolution, tool checks (`classify_urls`) |
 | `lib/vdl/ytdlp.sh` | yt-dlp defaults, cookies, and impersonation (`build_yt_common`) |
 | `lib/vdl/plan.sh` | Engine/mode strings and the dry-run plan (`build_header`, `print_plan`) |
 | `lib/vdl/report.sh` | Per-URL records and `--json` / `--json-lines` reports |
 | `lib/vdl/doctor.sh` | `--doctor` environment checks (text and JSON) |
-| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, completions; supports `--termux` |
+| `install.sh` | Installs `bin/vdl`, `lib/vdl/*.sh`, man page, and completions |
 | `test/smoke.sh` | Stub-based CLI test runner (no network); cases live in `test/smoke/cases/` |
 | `test/unit.sh` | Unit tests for pure functions in `lib/vdl/helpers.sh` |
 | `docs/USAGE.md` | User guide |
-| `docs/TERMUX.md` | Detailed Termux setup, storage, cookie, and background guide |
 | `docs/SPEC.md` | This file |
 
 `bin/vdl` sources the libraries from `../lib/vdl` relative to the real
@@ -42,16 +41,15 @@ the repo and from any install prefix.
    resolves settings and paths, runs the environment checks, and exits
    before URL collection.
 2. **Resolve settings** — precedence: command line > environment > vdl
-   config file > defaults.  Browser, cookies file, quality, audio mode, and
-   speed limits are validated here.  `-n` clears browser and file cookies.
+   config file > defaults.  Browser, quality, audio mode, collision policy,
+   and speed limits are validated here.  `-n` disables browser cookies.
 3. **Collect URLs** — arguments (multi-line pasted blocks are split into
    one URL per line; blank and non-URL lines in a paste are ignored), batch
    files (lines starting with `http://`/`https://`), or the clipboard when
-   none were given; duplicates removed, order preserved.  On Termux,
-   `--root-cookies` is staged after URL validation, so a usage error never
-   prompts for root.
-4. **Set up paths** — save dir, run-isolated temp dir
-   (`$XDG_CACHE_HOME/vdl/runs/<id>`), EXIT/INT traps (omitted in
+   none were given; duplicates removed, order preserved.
+4. **Set up paths** — save dir, run-isolated scratch dir
+   (`$XDG_CACHE_HOME/vdl/runs/<id>`), stable partial dirs
+   (`$XDG_CACHE_HOME/vdl/partials/<key>`), EXIT/INT traps (omitted in
    `--dry-run`), and the `--output` repointing.
 5. **Classify** — `url_is_direct` implements the routing rule; known
    gallery/file hosts (and every non-direct URL under `--gallery`) go to the
@@ -60,11 +58,12 @@ the repo and from any install prefix.
    media page's extractor so image-only pages can be dropped from the media
    queue early.
 6. **Build yt-dlp defaults** — `yt_common` (ignore-config, retries,
-   progress template, rate limit, browser/file cookies) and impersonation
+   progress template, rate limit, browser cookies) and impersonation
    probing.
 7. **Plan** — engine/mode strings, banner, directories, `--dry-run` exit.
-8. **Download** — direct files via aria2c (`-Z`, 16 connections, custom
-   name without `-Z`) with yt-dlp fallback for failed files; media via one
+8. **Download** — direct files via aria2c (`-Z`, 16 connections; per-URL
+   `-o` for custom names or rename collisions) with yt-dlp fallback for
+   failed files; media via one
    yt-dlp invocation per URL (aria2c for HTTP(S), native for HLS/DASH), so
    each URL gets an independent outcome and gallery-dl fallback; gallery
    URLs via gallery-dl; **then**, with `--images`, the pages are scanned for
@@ -110,8 +109,6 @@ Any nonzero failure counter (`direct_fail + media_fail + gallery_fail + img_fail
 - `save_dir`, `tmp_dir`, `partials_base`, `out_dir`, `browser`, `quality`,
   `yt_common`, `custom_direct`, `custom_media`, `out_folder_strip`,
   `direct_dest`, `on_collision`.
-- `cookies_file`, `root_cookies`, `cookie_label`, `yt_cookie_args`,
-  `termux_wakelock`.
 - `scan_pages`, `scan_do`, `scan_title`, `failed_items`, `zip_created`,
   `zip_mode`, `zip_name`.
 
